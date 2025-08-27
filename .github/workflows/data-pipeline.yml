@@ -1,0 +1,46 @@
+name: Data Pipeline (Flyway)
+
+on:
+  workflow_call:
+    inputs:
+      project-name:
+        required: true
+        type: string
+      environment:
+        required: true
+        type: string
+      java-version:
+        required: false
+        type: string
+        default: "11"
+      build-tool:
+        required: false
+        type: string
+        default: "maven"
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: "temurin"
+
+      - name: Run Flyway migrations
+        run: |
+          mvn flyway:info
+          mvn flyway:validate
+          mvn flyway:migrate
+
+      - name: Notify on completion
+        uses: ./.github/actions/notify
+        with:
+          webhook_url: ${{ secrets.ZOHO_CLIQ_WEBHOOK }}
+          message: "✅ Database migration completed for ${{ inputs.project-name }} in ${{ inputs.environment }}"
+          environment: ${{ inputs.environment }}

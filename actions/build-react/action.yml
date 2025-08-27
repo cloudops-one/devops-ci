@@ -1,0 +1,26 @@
+name: 'Build React Project'
+description: 'Builds React projects using npm'
+
+inputs:
+  node-version:
+    description: 'Node.js version'
+    required: true
+  npm-cache:
+    description: 'Enable npm caching'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build React Project
+      run: npm run build

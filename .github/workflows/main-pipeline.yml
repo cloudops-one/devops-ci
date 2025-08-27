@@ -1,0 +1,299 @@
+name: Universal CI/CD Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      project_type:
+        required: true
+        type: string
+        description: "Project type: java-spring, react, data, e2e"
+      java_version:
+        required: false
+        type: string
+        default: "11"
+      build_tool:
+        required: false
+        type: string
+        default: "maven"
+      node_version:
+        required: false
+        type: string
+        default: "18"
+      environment:
+        required: true
+        type: string
+        description: "Target environment: preview, stage, live"
+      project_name:
+        required: true
+        type: string
+      component:
+        required: true
+        type: string
+      domain_config:
+        required: true
+        type: string
+      deploy_supporting_services:
+        required: false
+        type: boolean
+        default: false
+
+    secrets:
+      HARBOR_USERNAME:
+        required: true
+      HARBOR_PASSWORD:
+        required: true
+      HARBOR_REGISTRY:
+        required: true
+      KUBECONFIG:
+        required: true
+      AWS_ACCESS_KEY_ID:
+        required: true
+      AWS_SECRET_ACCESS_KEY:
+        required: true
+      SONARQUBE_TOKEN:
+        required: true
+      SONARQUBE_URL:
+        required: true
+      SNYK_TOKEN:
+        required: true
+      ZOHO_CLIQ_WEBHOOK_PREVIEW:
+        required: true
+      ZOHO_CLIQ_WEBHOOK_STAGE:
+        required: true
+      ZOHO_CLIQ_WEBHOOK_LIVE:
+        required: true
+
+jobs:
+  validate-branch:
+    runs-on: ubuntu-latest
+    outputs:
+      branch_valid: ${{ steps.validation.outputs.valid }}
+      docker_tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Validate branch name
+        id: validation
+        run: |
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+
+          # Branch validation regex
+          BRANCH_REGEX="^(feat|fix|chore|test|docs|refactor|ci|style|perf|build)/[0-9]{1,5}_[a-z0-9]+(-[a-z0-9]+)*$"
+
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            # Tag validation for live environment
+            if [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "valid=true" >> $GITHUB_OUTPUT
+              echo "Tag $TAG_NAME is valid for live deployment"
+            else
+              echo "valid=false" >> $GITHUB_OUTPUT
+              echo "Invalid tag format. Expected: v1.0.0"
+              exit 1
+            fi
+          elif [[ "$BRANCH_NAME" == "main" ]]; then
+            echo "valid=true" >> $GITHUB_OUTPUT
+            echo "Main branch is valid for stage deployment"
+          elif [[ "$BRANCH_NAME" =~ $BRANCH_REGEX ]]; then
+            echo "valid=true" >> $GITHUB_OUTPUT
+            echo "Feature branch $BRANCH_NAME is valid for preview deployment"
+          else
+            echo "valid=false" >> $GITHUB_OUTPUT
+            echo "Branch name does not match required pattern"
+            exit 1
+          fi
+
+      - name: Determine docker tag
+        id: tag
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            echo "tag=$TAG" >> $GITHUB_OUTPUT
+          elif [[ "$GITHUB_REF" == refs/heads/main ]]; then
+            echo "tag=stage" >> $GITHUB_OUTPUT
+          else
+            BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+            SANITIZED_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]')
+            echo "tag=$SANITIZED_BRANCH" >> $GITHUB_OUTPUT
+          fi
+
+  build-and-test:
+    needs: validate-branch
+    if: needs.validate-branch.outputs.branch_valid == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build and test based on project type
+        uses: ./.github/actions/build-and-test
+        with:
+          project_type: ${{ inputs.project_type }}
+          java_version: ${{ inputs.java_version }}
+          build_tool: ${{ inputs.build_tool }}
+          node_version: ${{ inputs.node_version }}
+          sonarqube_token: ${{ secrets.SONARQUBE_TOKEN }}
+          sonarqube_url: ${{ secrets.SONARQUBE_URL }}
+          snyk_token: ${{ secrets.SNYK_TOKEN }}
+
+  security-scan:
+    needs: [validate-branch, build-and-test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run security scans
+        uses: ./.github/actions/security-scan
+        with:
+          project_type: ${{ inputs.project_type }}
+          snyk_token: ${{ secrets.SNYK_TOKEN }}
+
+  docker-build-push:
+    needs: [validate-branch, build-and-test, security-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build and push Docker image
+        uses: ./.github/actions/docker-operations
+        with:
+          operation: "build-push"
+          harbor_registry: ${{ secrets.HARBOR_REGISTRY }}
+          harbor_username: ${{ secrets.HARBOR_USERNAME }}
+          harbor_password: ${{ secrets.HARBOR_PASSWORD }}
+          project_name: ${{ inputs.project_name }}
+          component: ${{ inputs.component }}
+          docker_tag: ${{ needs.validate-branch.outputs.docker_tag }}
+
+  deploy-preview:
+    needs: [validate-branch, docker-build-push]
+    if: ${{ inputs.environment == 'preview' }}
+    environment:
+      name: preview-${{ inputs.project_name }}-${{ inputs.component }}
+      url: https://${{ needs.validate-branch.outputs.docker_tag }}.preview.${{ inputs.component }}.${{ fromJson(inputs.domain_config).preview_domain }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to preview environment
+        uses: ./.github/actions/k8s-deploy
+        with:
+          environment: "preview"
+          project_name: ${{ inputs.project_name }}
+          component: ${{ inputs.component }}
+          docker_tag: ${{ needs.validate-branch.outputs.docker_tag }}
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+          domain_config: ${{ inputs.domain_config }}
+          deploy_supporting_services: ${{ inputs.deploy_supporting_services }}
+          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Notify deployment success
+        if: success()
+        uses: ./.github/actions/notify
+        with:
+          webhook_url: ${{ secrets.ZOHO_CLIQ_WEBHOOK_PREVIEW }}
+          message: "✅ Preview deployment successful for ${{ inputs.project_name }}-${{ inputs.component }}"
+          environment: "preview"
+
+  deploy-stage:
+    needs: [validate-branch, docker-build-push]
+    if: ${{ inputs.environment == 'stage' }}
+    environment:
+      name: stage
+      url: https://${{ inputs.component }}.stage.${{ fromJson(inputs.domain_config).stage_domain }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to stage environment
+        uses: ./.github/actions/k8s-deploy
+        with:
+          environment: "stage"
+          project_name: ${{ inputs.project_name }}
+          component: ${{ inputs.component }}
+          docker_tag: ${{ needs.validate-branch.outputs.docker_tag }}
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+          domain_config: ${{ inputs.domain_config }}
+          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Trigger E2E tests
+        if: success()
+        uses: ./.github/actions/trigger-e2e
+        with:
+          project_name: ${{ inputs.project_name }}
+          environment: "stage"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify deployment success
+        if: success()
+        uses: ./.github/actions/notify
+        with:
+          webhook_url: ${{ secrets.ZOHO_CLIQ_WEBHOOK_STAGE }}
+          message: "✅ Stage deployment successful for ${{ inputs.project_name }}-${{ inputs.component }}"
+          environment: "stage"
+
+  deploy-live:
+    needs: [validate-branch, docker-build-push]
+    if: ${{ inputs.environment == 'live' }}
+    environment:
+      name: live
+      url: https://${{ fromJson(inputs.domain_config).live_domain }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to live environment
+        id: deploy
+        uses: ./.github/actions/k8s-deploy
+        with:
+          environment: "live"
+          project_name: ${{ inputs.project_name }}
+          component: ${{ inputs.component }}
+          docker_tag: ${{ needs.validate-branch.outputs.docker_tag }}
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+          domain_config: ${{ inputs.domain_config }}
+          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Smoke test
+        id: smoke_test
+        run: |
+          URL="https://${{ fromJson(inputs.domain_config).live_domain }}"
+          echo "Testing $URL"
+
+          for i in {1..5}; do
+            if curl -f -s "$URL" > /dev/null; then
+              echo "Smoke test passed"
+              echo "success=true" >> $GITHUB_OUTPUT
+              break
+            else
+              echo "Attempt $i failed, retrying..."
+              sleep 10
+            fi
+
+            if [ $i -eq 5 ]; then
+              echo "success=false" >> $GITHUB_OUTPUT
+              echo "Smoke test failed after 5 attempts"
+            fi
+          done
+
+      - name: Rollback on failure
+        if: steps.smoke_test.outputs.success == 'false'
+        uses: ./.github/actions/k8s-rollback
+        with:
+          environment: "live"
+          project_name: ${{ inputs.project_name }}
+          component: ${{ inputs.component }}
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Notify deployment result
+        uses: ./.github/actions/notify
+        with:
+          webhook_url: ${{ secrets.ZOHO_CLIQ_WEBHOOK_LIVE }}
+          message: ${{ steps.smoke_test.outputs.success == 'true' && '✅ Live deployment successful' || '❌ Live deployment failed and rolled back' }}
+          environment: "live"
+
+  cleanup-preview:
+    if: ${{ inputs.environment == 'preview' && always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Schedule cleanup
+        run: |
+          echo "Preview environment will be cleaned up after 3 hours"
+          # This would typically trigger a scheduled cleanup job

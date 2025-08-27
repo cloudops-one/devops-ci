@@ -1,0 +1,47 @@
+name: 'Notify'
+description: 'Sends notifications to Zoho Cliq'
+
+inputs:
+  webhook_url:
+    description: 'Zoho Cliq webhook URL'
+    required: true
+  message:
+    description: 'Message to send'
+    required: true
+  environment:
+    description: 'The environment (preview, stage, live)'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Send notification
+      shell: bash
+      run: |
+        curl -X POST "${{ inputs.webhook_url }}" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "text": "${{ inputs.message }}",
+            "card": {
+              "title": "Deployment Notification",
+              "theme": "${{ inputs.environment == '"'"'live'"'"' && '"'"'modern-inline'"'"' || '"'"'basic'"'"' }}",
+              "thumbnail": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
+              "sections": [{
+                "title": "Details",
+                "data": [
+                  {"Repository": "${{ github.repository }}"},
+                  {"Environment": "${{ inputs.environment }}"},
+                  {"Commit": "${{ github.sha }}"},
+                  {"Author": "${{ github.actor }}"},
+                  {"Branch/Tag": "${{ github.ref_name }}"}
+                ]
+              }],
+              "buttons": [{
+                "label": "View Deployment",
+                "action": {
+                  "type": "open.url",
+                  "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                }
+              }]
+            }
+          }'

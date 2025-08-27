@@ -1,0 +1,47 @@
+name: E2E Testing Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      project-name:
+        required: true
+        type: string
+      base-url:
+        required: true
+        type: string
+      java-version:
+        required: false
+        type: string
+        default: '11'
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: 'temurin'
+
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@latest
+
+      - name: Run Playwright E2E tests
+        run: |
+          mvn test -Dtest.environment=${{ inputs.environment }} -Dbase.url=${{ inputs.base-url }}
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results-${{ inputs.environment }}
+          path: |
+            target/surefire-reports/
+            target/playwright-report/

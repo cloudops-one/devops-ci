@@ -1,0 +1,32 @@
+name: 'DNS Management'
+description: 'Manages DNS records in AWS Route53'
+
+inputs:
+  environment:
+    description: 'Deployment environment (e.g., preview, stage, live)'
+    required: true
+  subdomain:
+    description: 'Subdomain for the service'
+    required: true
+  domain:
+    description: 'Domain name (e.g., irai.yoga)'
+    required: true
+  service-type:
+    description: 'Service type (e.g., server, portal)'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-west-2
+
+    - name: Create DNS record in Route53
+      run: |
+        aws route53 change-resource-record-sets \
+          --hosted-zone-id ${{ secrets.HOSTED_ZONE_ID }} \
+          --change-batch file://dns-change-batch.json

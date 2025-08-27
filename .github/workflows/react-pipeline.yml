@@ -1,0 +1,53 @@
+name: React CI/CD Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      project-name:
+        required: true
+        type: string
+      repo-name:
+        required: true
+        type: string
+      service-type:
+        required: true
+        type: string
+      domain:
+        required: true
+        type: string
+      node-version:
+        required: false
+        type: string
+        default: "18"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build project
+        run: npm run build
+
+      - name: Push Docker image
+        uses: ./.github/actions/docker-operations
+        with:
+          operation: "build-push"
+          harbor_registry: ${{ secrets.HARBOR_REGISTRY }}
+          harbor_username: ${{ secrets.HARBOR_USERNAME }}
+          harbor_password: ${{ secrets.HARBOR_PASSWORD }}
+          project_name: ${{ inputs.project-name }}
+          component: ${{ inputs.service-type }}
+          docker_tag: "latest"

@@ -1,0 +1,30 @@
+name: 'Kubernetes Deploy'
+description: 'Deploys an application to Kubernetes'
+
+inputs:
+  environment:
+    description: 'Deployment environment (e.g., preview, stage, live)'
+    required: true
+  project-name:
+    description: 'Project name'
+    required: true
+  component:
+    description: 'Component name (e.g., server, portal)'
+    required: true
+  image-tag:
+    description: 'Docker image tag'
+    required: true
+  kubeconfig:
+    description: 'Kubeconfig for Kubernetes'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup kubectl
+      uses: azure/setup-kubectl@v3
+
+    - name: Deploy to Kubernetes
+      run: |
+        kubectl apply -f deployment.yaml
+        kubectl set image deployment/$REPO_NAME $REPO_NAME=$HARBOR_REGISTRY/$PROJECT_NAME/$COMPONENT:$IMAGE_TAG

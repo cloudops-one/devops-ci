@@ -1,0 +1,54 @@
+name: Java CI/CD Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      project-name:
+        required: true
+        type: string
+      repo-name:
+        required: true
+        type: string
+      service-type:
+        required: true
+        type: string
+      domain:
+        required: true
+        type: string
+      java-version:
+        required: false
+        type: string
+        default: '11'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: 'temurin'
+
+      - name: Build with Maven
+        run: mvn clean install
+
+      - name: Run tests
+        run: mvn test
+
+      - name: Code Coverage with JaCoCo
+        run: mvn jacoco:report
+
+      - name: Push Docker image
+        uses: ./.github/actions/docker-operations
+        with:
+          operation: "build-push"
+          harbor_registry: ${{ secrets.HARBOR_REGISTRY }}
+          harbor_username: ${{ secrets.HARBOR_USERNAME }}
+          harbor_password: ${{ secrets.HARBOR_PASSWORD }}
+          project_name: ${{ inputs.project-name }}
+          component: ${{ inputs.service-type }}
+          docker_tag: "latest"

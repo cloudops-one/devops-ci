@@ -1,0 +1,27 @@
+name: 'Setup Environment'
+description: 'Sets up environment for the CI/CD pipeline'
+
+inputs:
+  java-version:
+    description: 'The Java version to use'
+    required: false
+    default: '11'
+  node-version:
+    description: 'The Node.js version to use'
+    required: false
+    default: '18'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ inputs.java-version }}
+        distribution: 'temurin'
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
