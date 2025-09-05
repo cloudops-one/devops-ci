@@ -40,7 +40,7 @@ runs:
         password: ${{ inputs.docker-password }}
 
     - name: Log in to Harbor
-      uses: docker/login-action@v3
+      uses: cloudops-one/login-action@v3
       with:
         registry: ${{ inputs.harbor-registry }}
         username: ${{ inputs.harbor-username }}
