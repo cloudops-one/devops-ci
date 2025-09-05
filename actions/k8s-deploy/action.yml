@@ -17,12 +17,18 @@ inputs:
   kubeconfig:
     description: 'Kubeconfig for Kubernetes'
     required: true
+  kubectl-version:
+    description: 'Version of kubectl to install'
+    required: false
+    default: 'latest'
 
 runs:
   using: 'composite'
   steps:
-    - name: Setup kubectl
-      uses: azure/setup-kubectl@v3
+    - name: Set up kubectl
+      uses: cloudops-one/setup-kubectl@v3
+      with:
+        version: ${{ inputs.kubectl-version }}
 
     - name: Deploy to Kubernetes
       run: |

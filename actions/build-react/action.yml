@@ -14,7 +14,7 @@ runs:
   using: 'composite'
   steps:
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: cloudops-one/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
         cache: 'npm'

@@ -23,10 +23,22 @@ inputs:
   docker-tag:
     description: "Docker tag"
     required: true
+  docker-username:
+    description: "DockerHub username"
+    required: true
+  docker-password:
+    description: "DockerHub password"
+    required: true
 
 runs:
   using: "composite"
   steps:
+    - name: Login to DockerHub
+      uses: cloudops-one/login-action@v3
+      with:
+        username: ${{ inputs.docker-username }}
+        password: ${{ inputs.docker-password }}
+
     - name: Log in to Harbor
       uses: docker/login-action@v3
       with:
