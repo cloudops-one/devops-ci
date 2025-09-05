@@ -121,7 +121,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: cloudops-one/checkout@v4
 
       - name: Build and test based on project type
         uses: ./.github/actions/build-and-test
@@ -139,7 +139,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: cloudops-one/checkout@v4
 
       - name: Run security scans
         uses: ./.github/actions/security-scan
@@ -152,7 +152,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: cloudops-one/checkout@v4
 
       - name: Build and push Docker image
         uses: ./.github/actions/docker-operations
