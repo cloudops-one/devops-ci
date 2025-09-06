@@ -1,0 +1,117 @@
+name: 'Build and Test'
+description: 'Build and test based on project type with multiple language support'
+
+inputs:
+  project_type:
+    description: 'Type of project (java, node, python, etc.)'
+    required: true
+  java_version:
+    description: 'Java version for Java projects'
+    required: false
+    default: '17'
+  build_tool:
+    description: 'Build tool (maven, gradle)'
+    required: false
+    default: 'maven'
+  node_version:
+    description: 'Node.js version for Node projects'
+    required: false
+    default: '18'
+  sonarqube_token:
+    description: 'SonarQube token for code analysis'
+    required: false
+  sonarqube_url:
+    description: 'SonarQube server URL'
+    required: false
+  snyk_token:
+    description: 'Snyk token for security scanning'
+    required: false
+
+runs:
+  using: "composite"
+  steps:
+    - name: Determine project type and setup
+      shell: bash
+      run: |
+        echo "Building project type: ${{ inputs.project_type }}"
+        echo "Java version: ${{ inputs.java_version }}"
+        echo "Build tool: ${{ inputs.build_tool }}"
+        echo "Node version: ${{ inputs.node_version }}"
+
+    - name: Setup Java (if Java project)
+      if: ${{ inputs.project_type == 'java' }}
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'temurin'
+        java-version: ${{ inputs.java_version }}
+        cache: ${{ inputs.build_tool }}
+
+    - name: Setup Node.js (if Node project)
+      if: ${{ inputs.project_type == 'node' }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node_version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        if [ "${{ inputs.project_type }}" = "java" ]; then
+          if [ "${{ inputs.build_tool }}" = "maven" ]; then
+            mvn dependency:resolve
+          elif [ "${{ inputs.build_tool }}" = "gradle" ]; then
+            ./gradlew dependencies
+          fi
+        elif [ "${{ inputs.project_type }}" = "node" ]; then
+          npm ci
+        fi
+
+    - name: Run tests
+      shell: bash
+      run: |
+        if [ "${{ inputs.project_type }}" = "java" ]; then
+          if [ "${{ inputs.build_tool }}" = "maven" ]; then
+            mvn test
+          elif [ "${{ inputs.build_tool }}" = "gradle" ]; then
+            ./gradlew test
+          fi
+        elif [ "${{ inputs.project_type }}" = "node" ]; then
+          npm test
+        fi
+
+    - name: Run SonarQube analysis
+      if: ${{ inputs.sonarqube_token != '' && inputs.sonarqube_url != '' }}
+      shell: bash
+      run: |
+        if [ "${{ inputs.project_type }}" = "java" ]; then
+          if [ "${{ inputs.build_tool }}" = "maven" ]; then
+            mvn sonar:sonar \
+              -Dsonar.token=${{ inputs.sonarqube_token }} \
+              -Dsonar.host.url=${{ inputs.sonarqube_url }}
+          fi
+        fi
+        # Add other project types as needed
+
+    - name: Run Snyk security scan
+      if: ${{ inputs.snyk_token != '' }}
+      shell: bash
+      run: |
+        npx snyk auth ${{ inputs.snyk_token }}
+        if [ "${{ inputs.project_type }}" = "java" ]; then
+          npx snyk test --all-projects
+        elif [ "${{ inputs.project_type }}" = "node" ]; then
+          npx snyk test
+        fi
+
+    - name: Build project
+      shell: bash
+      run: |
+        if [ "${{ inputs.project_type }}" = "java" ]; then
+          if [ "${{ inputs.build_tool }}" = "maven" ]; then
+            mvn package -DskipTests
+          elif [ "${{ inputs.build_tool }}" = "gradle" ]; then
+            ./gradlew build -x test
+          fi
+        elif [ "${{ inputs.project_type }}" = "node" ]; then
+          npm run build
+        fi
