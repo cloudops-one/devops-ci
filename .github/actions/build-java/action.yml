@@ -16,6 +16,9 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
     - name: Setup Java
       uses: cloudops-one/setup-java@v4
       with:
