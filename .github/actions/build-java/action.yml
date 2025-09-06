@@ -17,23 +17,13 @@ runs:
   using: "composite"
   steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: cloudops-one/checkout@v4  # Changed to your org's version
 
     - name: Setup Java
-      uses: cloudops-one/setup-java@v4
+      uses: cloudops-one/setup-java@v4  # This is correct
       with:
         java-version: ${{ inputs.java-version }}
         distribution: "temurin"
-
-    - name: Cache dependencies
-      uses: cloudops-one/cache@v4
-      with:
-        path: |
-          ~/.m2/repository
-          ~/.gradle/caches
-        key: ${{ runner.os }}-${{ inputs.build-tool }}-${{ hashFiles('**/*.gradle*', '**/pom.xml') }}
-        restore-keys: |
-          ${{ runner.os }}-${{ inputs.build-tool }}-
 
     - name: Build with Maven
       if: ${{ inputs.build-tool == 'maven' }}
