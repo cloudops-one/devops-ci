@@ -124,7 +124,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build and test based on project type
-        uses: ./.github/actions/build-and-test
+        uses: ./.github/actions/build-and-test/action.yaml
         with:
           project_type: ${{ inputs.project_type }}
           java_version: ${{ inputs.java_version }}
