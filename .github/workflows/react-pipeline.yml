@@ -28,7 +28,7 @@ jobs:
         uses: cloudops-one/checkout@v4
 
       - name: Setup Node.js
-        uses: cloudeops-one/setup-node@v1
+        uses: cloudops-one/setup-node@v1
         with:
           node-version: ${{ inputs.node-version }}
 
