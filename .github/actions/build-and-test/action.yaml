@@ -41,7 +41,7 @@ runs:
 
     - name: Setup Java (if Java project)
       if: ${{ inputs.project_type == 'java' }}
-      uses: cloudops-one/setup-java@v4  # Changed to your org's version
+      uses: cloudops-one/setup-java@v1  # Changed to your org's version
       with:
         distribution: 'temurin'
         java-version: ${{ inputs.java_version }}
