@@ -1,18 +1,27 @@
 name: 'Build React Project'
-description: 'Builds React projects using npm'
+description: 'Builds React applications without running tests'
 
 inputs:
   node-version:
     description: 'Node.js version'
-    required: true
-  npm-cache:
-    description: 'Enable npm caching'
     required: false
-    default: 'true'
+    default: '18'
+  sonarqube-token:
+    description: 'SonarQube token'
+    required: false
+  sonarqube-url:
+    description: 'SonarQube URL'
+    required: false
+  snyk-token:
+    description: 'Snyk token'
+    required: false
 
 runs:
   using: 'composite'
   steps:
+    - name: Checkout code
+      uses: cloudops-one/checkout@v4
+
     - name: Setup Node.js
       uses: cloudops-one/setup-node@v1
       with:
@@ -20,7 +29,25 @@ runs:
         cache: 'npm'
 
     - name: Install dependencies
+      shell: bash
       run: npm ci
 
-    - name: Build React Project
+    - name: Build application
+      shell: bash
       run: npm run build
+
+    - name: Security scan with Snyk
+      if: ${{ inputs.snyk-token != '' }}
+      shell: bash
+      run: npx snyk test --token=${{ inputs.snyk-token }}
+
+    - name: SonarQube scan
+      if: ${{ inputs.sonarqube-token != '' && inputs.sonarqube-url != '' }}
+      shell: bash
+      run: |
+        npm install -g sonar-scanner
+        sonar-scanner \
+          -Dsonar.projectKey=react-app \
+          -Dsonar.sources=src \
+          -Dsonar.host.url=${{ inputs.sonarqube-url }} \
+          -Dsonar.login=${{ inputs.sonarqube-token }}
