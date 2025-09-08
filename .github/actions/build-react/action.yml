@@ -1,5 +1,5 @@
 name: 'Build React Project'
-description: 'Builds React applications without running tests'
+description: 'Builds React applications with automatic dependency setup'
 
 inputs:
   node-version:
@@ -28,9 +28,29 @@ runs:
         node-version: ${{ inputs.node-version }}
         cache: 'npm'
 
-    - name: Install dependencies
+    - name: Check for package-lock.json
+      id: check_lockfile
+      shell: bash
+      run: |
+        if [ -f "package-lock.json" ]; then
+          echo "lockfile_exists=true" >> $GITHUB_OUTPUT
+          echo "Found package-lock.json"
+        else
+          echo "lockfile_exists=false" >> $GITHUB_OUTPUT
+          echo "No package-lock.json found, will generate one"
+        fi
+
+    - name: Install dependencies (with lockfile)
+      if: steps.check_lockfile.outputs.lockfile_exists == 'true'
       shell: bash
       run: npm ci
+
+    - name: Install dependencies and generate lockfile
+      if: steps.check_lockfile.outputs.lockfile_exists == 'false'
+      shell: bash
+      run: |
+        npm install
+        echo "Generated package-lock.json"
 
     - name: Build application
       shell: bash
@@ -51,3 +71,11 @@ runs:
           -Dsonar.sources=src \
           -Dsonar.host.url=${{ inputs.sonarqube-url }} \
           -Dsonar.login=${{ inputs.sonarqube-token }}
+
+    - name: Upload build artifacts
+      uses: cloudops-one/devops-ci/.github/actions/upload-artifact@main
+      with:
+        name: react-build
+        path: |
+          build/
+          package-lock.json
