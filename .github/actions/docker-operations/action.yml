@@ -37,18 +37,18 @@ runs:
         echo "Validating inputs..."
         
         # Check if inputs are provided
-        if [ -z "${{ inputs.harbor-registry }}" ]; then
-          echo "❌ Error: harbor-registry is empty or not provided"
+        if [ -z "${{ inputs.HARBOR_REGISTRY }}" ]; then
+          echo "❌ Error: HARBOR_REGISTRY is empty or not provided"
           exit 1
         fi
         
-        if [ -z "${{ inputs.harbor-username }}" ]; then
-          echo "❌ Error: harbor-username is empty or not provided"
+        if [ -z "${{ inputs.HARBOR_USERNAME }}" ]; then
+          echo "❌ Error: HARBOR_USERNAME is empty or not provided"
           exit 1
         fi
         
-        if [ -z "${{ inputs.harbor-password }}" ]; then
-          echo "❌ Error: harbor-password is empty or not provided"
+        if [ -z "${{ inputs.HARBOR_PASSWORD }}" ]; then
+          echo "❌ Error: HARBOR_PASSWORD is empty or not provided"
           exit 1
         fi
         
