@@ -33,7 +33,10 @@ inputs:
 runs:
   using: "composite"
   steps:
-   
+    - name: Login to DockerHub
+      run: echo "${{ inputs.docker-password }}" | docker login -u "${{ inputs.docker-username }}" --password-stdin
+      shell: bash
+
     - name: Log in to Harbor
       run: echo "${{ inputs.harbor-password }}" | docker login -u "${{ inputs.harbor-username }}" --password-stdin "${{ inputs.harbor-registry }}"
       shell: bash
