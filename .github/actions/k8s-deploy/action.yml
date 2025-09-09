@@ -11,12 +11,19 @@ inputs:
   component:
     description: 'Component name (e.g., server, portal)'
     required: true
-  image-tag:
+  docker-tag:
     description: 'Docker image tag'
     required: true
   kubeconfig:
     description: 'Kubeconfig for Kubernetes'
     required: true
+  domain-config:
+    description: 'Domain configuration for the environment'
+    required: true
+  deploy-supporting-services:
+    description: 'Whether to deploy supporting services'
+    required: false
+    default: 'false'
   kubectl-version:
     description: 'Version of kubectl to install'
     required: false
@@ -30,7 +37,39 @@ runs:
       with:
         version: ${{ inputs.kubectl-version }}
 
-    - name: Deploy to Kubernetes
+    - name: Configure kubeconfig
+      shell: bash
       run: |
-        kubectl apply -f deployment.yaml
-        kubectl set image deployment/$REPO_NAME $REPO_NAME=$HARBOR_REGISTRY/$PROJECT_NAME/$COMPONENT:$IMAGE_TAG
+        echo "${{ inputs.kubeconfig }}" > kubeconfig.yaml
+        export KUBECONFIG=kubeconfig.yaml
+
+    - name: Deploy to Kubernetes
+      shell: bash
+      run: |
+        # Set environment variables for the deployment
+        export ENVIRONMENT=${{ inputs.environment }}
+        export PROJECT_NAME=${{ inputs.project-name }}
+        export COMPONENT=${{ inputs.component }}
+        export IMAGE_TAG=${{ inputs.docker-tag }}
+        export DOMAIN_CONFIG=${{ inputs.domain-config }}
+        
+        # Apply Kubernetes manifests (you'll need to create these templates)
+        kubectl apply -f k8s-templates/namespace.yaml
+        kubectl apply -f k8s-templates/configmap.yaml
+        kubectl apply -f k8s-templates/deployment.yaml
+        kubectl apply -f k8s-templates/service.yaml
+        kubectl apply -f k8s-templates/ingress.yaml
+        
+        # Update the deployment image
+        kubectl set image deployment/$COMPONENT $COMPONENT=$HARBOR_REGISTRY/$PROJECT_NAME/$COMPONENT:$IMAGE_TAG -n $PROJECT_NAME-$ENVIRONMENT
+        
+        # Wait for rollout to complete
+        kubectl rollout status deployment/$COMPONENT -n $PROJECT_NAME-$ENVIRONMENT --timeout=300s
+
+    - name: Verify deployment
+      shell: bash
+      run: |
+        export KUBECONFIG=kubeconfig.yaml
+        kubectl get pods -n ${{ inputs.project-name }}-${{ inputs.environment }}
+        kubectl get svc -n ${{ inputs.project-name }}-${{ inputs.environment }}
+        kubectl get ingress -n ${{ inputs.project-name }}-${{ inputs.environment }}
