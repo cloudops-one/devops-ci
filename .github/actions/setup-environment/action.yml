@@ -1,27 +1,36 @@
 name: 'Setup Environment'
-description: 'Sets up environment for the CI/CD pipeline'
+description: 'Sets up environment variables and determines deployment context'
 
 inputs:
-  java-version:
-    description: 'The Java version to use'
-    required: false
-    default: '11'
-  node-version:
-    description: 'The Node.js version to use'
-    required: false
-    default: '18'
+  github_ref:
+    description: 'The GitHub ref that triggered the workflow'
+    required: true
+
+outputs:
+  environment:
+    description: 'The determined environment (preview, stage, live)'
+    value: ${{ steps.env.outputs.environment }}
+  docker_tag:
+    description: 'The determined Docker tag'
+    value: ${{ steps.tag.outputs.docker_tag }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Setup Java
-      uses: cloudops-one/setup-java@v4
-      with:
-        java-version: ${{ inputs.java-version }}
-        distribution: "temurin"
-
-    - name: Setup Node.js
-      uses: cloudops-one/setup-node@v4
-      with:
-        node-version: ${{ inputs.node-version }}
-        cache: 'npm'
+    - name: Determine environment and tag
+      id: env
+      shell: bash
+      run: |
+        if [[ "${{ inputs.github_ref }}" == refs/tags/* ]]; then
+          echo "environment=live" >> $GITHUB_OUTPUT
+          TAG="${GITHUB_REF#refs/tags/}"
+          echo "docker_tag=$TAG" >> $GITHUB_OUTPUT
+        elif [[ "${{ inputs.github_ref }}" == refs/heads/main ]]; then
+          echo "environment=stage" >> $GITHUB_OUTPUT
+          echo "docker_tag=stage" >> $GITHUB_OUTPUT
+        else
+          echo "environment=preview" >> $GITHUB_OUTPUT
+          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+          SANITIZED_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]')
+          echo "docker_tag=$SANITIZED_BRANCH" >> $GITHUB_OUTPUT
+        fi
