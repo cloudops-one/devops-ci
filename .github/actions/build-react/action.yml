@@ -18,12 +18,12 @@ runs:
   using: "composite"
   steps:
     - name: Use Node.js ${{ inputs.node-version }}
-      uses: actions/setup-node@v4
+      uses: cloudops-one/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
 
     - name: Cache npm dependencies
-      uses: actions/cache@v4
+      uses: cloudops-one/cache@v4
       with:
         path: ~/.npm
         key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
