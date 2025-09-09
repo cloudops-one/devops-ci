@@ -1,32 +1,27 @@
 name: 'DNS Management'
-description: 'Manages DNS records in AWS Route53'
+description: 'Determines domain configuration based on deployment environment'
 
 inputs:
-  environment:
-    description: 'Deployment environment (e.g., preview, stage, live)'
+  github_ref:
+    description: 'The GitHub ref that triggered the workflow'
     required: true
-  subdomain:
-    description: 'Subdomain for the service'
-    required: true
+
+outputs:
   domain:
-    description: 'Domain name (e.g., irai.yoga)'
-    required: true
-  service-type:
-    description: 'Service type (e.g., server, portal)'
-    required: true
+    description: 'The determined domain configuration'
+    value: ${{ steps.domain.outputs.domain }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Configure AWS credentials
-      uses: cloudops-one/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: us-west-2
-
-    - name: Create DNS record in Route53
+    - name: Determine domain configuration
+      id: domain
+      shell: bash
       run: |
-        aws route53 change-resource-record-sets \
-          --hosted-zone-id ${{ secrets.HOSTED_ZONE_ID }} \
-          --change-batch file://dns-change-batch.json
+        if [[ "${{ inputs.github_ref }}" == refs/tags/* ]]; then
+          echo "domain=live-domain-config" >> $GITHUB_OUTPUT
+        elif [[ "${{ inputs.github_ref }}" == refs/heads/main ]]; then
+          echo "domain=stage-domain-config" >> $GITHUB_OUTPUT
+        else
+          echo "domain=preview-domain-config" >> $GITHUB_OUTPUT
+        fi
