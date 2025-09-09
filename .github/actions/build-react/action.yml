@@ -34,7 +34,7 @@ runs:
       uses: cloudops-one/upload-artifact@main
       with:
         name: build-artifact
-        path: build
+        path: dist  # ← CHANGED FROM 'build' TO 'dist'
 
     - name: Skip Husky
       if: ${{ inputs.skip-husky == 'true' }}
