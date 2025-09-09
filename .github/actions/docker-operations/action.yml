@@ -41,3 +41,9 @@ runs:
       run: |
         docker push ${{ inputs.harbor-registry }}/${{ inputs.project-name }}/${{ inputs.component }}:${{ inputs.docker-tag }}
       shell: bash
+
+    - name: Log out from Docker Registry
+      if: always()
+      run: |
+        docker logout ${{ inputs.harbor-registry }}
+      shell: bash
