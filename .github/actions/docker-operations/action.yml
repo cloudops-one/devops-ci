@@ -33,18 +33,10 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Login to DockerHub
-      uses: cloudops-one/login-action@v3
-      with:
-        username: ${{ inputs.docker-username }}
-        password: ${{ inputs.docker-password }}
-
+   
     - name: Log in to Harbor
-      uses: cloudops-one/login-action@v3
-      with:
-        registry: ${{ inputs.harbor-registry }}
-        username: ${{ inputs.harbor-username }}
-        password: ${{ inputs.harbor-password }}
+      run: echo "${{ inputs.harbor-password }}" | docker login -u "${{ inputs.harbor-username }}" --password-stdin "${{ inputs.harbor-registry }}"
+      shell: bash
 
     - name: Build Docker Image
       run: docker build -t ${{ inputs.harbor-registry }}/${{ inputs.project-name }}/${{ inputs.component }}:${{ inputs.docker-tag }} .
