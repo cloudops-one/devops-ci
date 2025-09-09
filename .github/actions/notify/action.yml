@@ -2,7 +2,7 @@ name: 'Notify'
 description: 'Sends notifications to Zoho Cliq'
 
 inputs:
-  webhook_url:
+  webhook-url:
     description: 'Zoho Cliq webhook URL'
     required: true
   message:
@@ -18,29 +18,39 @@ runs:
     - name: Send notification
       shell: bash
       run: |
-        curl -X POST "${{ inputs.webhook_url }}" \
+        # Escape special characters in the message
+        ESCAPED_MESSAGE=$(echo '${{ inputs.message }}' | sed 's/"/\\"/g')
+        
+        # Determine theme based on environment
+        if [ "${{ inputs.environment }}" = "live" ]; then
+          THEME="modern-inline"
+        else
+          THEME="basic"
+        fi
+
+        curl -X POST "${{ inputs.webhook-url }}" \
           -H "Content-Type: application/json" \
           -d '{
-            "text": "${{ inputs.message }}",
+            "text": "'"$ESCAPED_MESSAGE"'",
             "card": {
               "title": "Deployment Notification",
-              "theme": "${{ inputs.environment == '"'"'live'"'"' && '"'"'modern-inline'"'"' || '"'"'basic'"'"' }}",
+              "theme": "'"$THEME"'",
               "thumbnail": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
               "sections": [{
                 "title": "Details",
                 "data": [
-                  {"Repository": "${{ github.repository }}"},
-                  {"Environment": "${{ inputs.environment }}"},
-                  {"Commit": "${{ github.sha }}"},
-                  {"Author": "${{ github.actor }}"},
-                  {"Branch/Tag": "${{ github.ref_name }}"}
+                  {"Repository": "'"$GITHUB_REPOSITORY"'"},
+                  {"Environment": "'"${{ inputs.environment }}"'"},
+                  {"Commit": "'"$GITHUB_SHA"'"},
+                  {"Author": "'"$GITHUB_ACTOR"'"},
+                  {"Branch/Tag": "'"$GITHUB_REF_NAME"'"}
                 ]
               }],
               "buttons": [{
                 "label": "View Deployment",
                 "action": {
                   "type": "open.url",
-                  "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  "url": "'"$GITHUB_SERVER_URL"'/'"$GITHUB_REPOSITORY"'/actions/runs/'"$GITHUB_RUN_ID"'"
                 }
               }]
             }
