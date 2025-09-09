@@ -1,10 +1,7 @@
-name: "Docker Operations"
-description: "Builds and pushes Docker images"
+name: "Centralized Docker Operations"
+description: "Builds and pushes Docker images to Harbor for any component"
 
 inputs:
-  operation:
-    description: "Operation to perform: build-push"
-    required: true
   harbor-registry:
     description: "Harbor registry URL"
     required: true
@@ -18,33 +15,44 @@ inputs:
     description: "Project name"
     required: true
   component:
-    description: "Component name"
+    description: "Component name (frontend, backend, api, etc.)"
     required: true
   docker-tag:
     description: "Docker tag"
     required: true
-  docker-username:
-    description: "DockerHub username"
-    required: true
-  docker-password:
-    description: "DockerHub password"
-    required: true
+  dockerfile-path:
+    description: "Path to Dockerfile directory"
+    required: false
+    default: "."
+  context-path:
+    description: "Build context path"
+    required: false
+    default: "."
 
 runs:
   using: "composite"
   steps:
-    - name: Login to DockerHub
-      run: echo "${{ inputs.docker-password }}" | docker login -u "${{ inputs.docker-username }}" --password-stdin
-      shell: bash
-
     - name: Log in to Harbor
-      run: echo "${{ inputs.harbor-password }}" | docker login -u "${{ inputs.harbor-username }}" --password-stdin "${{ inputs.harbor-registry }}"
+      run: |
+        echo "${{ inputs.harbor-password }}" | \
+        docker login -u "${{ inputs.harbor-username }}" \
+        --password-stdin "${{ inputs.harbor-registry }}"
       shell: bash
 
-    - name: Build Docker Image
-      run: docker build -t ${{ inputs.harbor-registry }}/${{ inputs.project-name }}/${{ inputs.component }}:${{ inputs.docker-tag }} .
+    - name: Build Docker Image for ${{ inputs.component }}
+      run: |
+        docker build \
+          -t ${{ inputs.harbor-registry }}/${{ inputs.project-name }}/${{ inputs.component }}:${{ inputs.docker-tag }} \
+          -f ${{ inputs.dockerfile-path }}/Dockerfile \
+          ${{ inputs.context-path }}
       shell: bash
 
-    - name: Push Docker Image
-      run: docker push ${{ inputs.harbor-registry }}/${{ inputs.project-name }}/${{ inputs.component }}:${{ inputs.docker-tag }}
+    - name: Push ${{ inputs.component }} Image to Harbor
+      run: |
+        docker push ${{ inputs.harbor-registry }}/${{ inputs.project-name }}/${{ inputs.component }}:${{ inputs.docker-tag }}
+      shell: bash
+
+    - name: Log out from Harbor
+      run: |
+        docker logout "${{ inputs.harbor-registry }}"
       shell: bash
