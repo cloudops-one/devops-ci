@@ -23,7 +23,7 @@ runs:
       uses: cloudops-one/checkout@v4
 
     - name: Setup Node.js
-      uses: cloudops-one/setup-node@v1
+      uses: cloudops-one/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
         cache: 'npm'
@@ -73,7 +73,7 @@ runs:
           -Dsonar.login=${{ inputs.sonarqube-token }}
 
     - name: Upload build artifacts
-      uses: cloudops-one/devops-ci/.github/actions/upload-artifact@main
+      uses: cloudops-one/upload-artifact@v4
       with:
         name: react-build
         path: |
