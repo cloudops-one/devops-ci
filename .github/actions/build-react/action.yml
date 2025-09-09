@@ -38,6 +38,12 @@ runs:
       run: npm run build
       shell: bash
 
+    - name: Upload production-ready build files
+      uses: cloudops-one/upload-artifact@main
+      with:
+        name: build-artifact
+        path: build
+
     - name: Skip Husky
       if: ${{ inputs.skip-husky == 'true' }}
       run: |
