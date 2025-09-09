@@ -1,81 +1,52 @@
-name: 'Build React Project'
-description: 'Builds React applications with automatic dependency setup'
+name: React Build
+description: Builds a React application.
 
 inputs:
   node-version:
-    description: 'Node.js version'
+    description: 'The Node.js version to use'
+    required: true
+  skip-husky:
+    description: 'Skip the Husky git hooks'
     required: false
-    default: '18'
-  sonarqube-token:
-    description: 'SonarQube token'
+    default: 'false'
+  generate-lockfile:
+    description: 'Generate a lockfile for npm'
     required: false
-  sonarqube-url:
-    description: 'SonarQube URL'
-    required: false
-  snyk-token:
-    description: 'Snyk token'
-    required: false
+    default: 'true'
 
 runs:
-  using: 'composite'
+  using: "composite"
   steps:
-    - name: Checkout code
-      uses: cloudops-one/checkout@v4
-
-    - name: Setup Node.js
-      uses: cloudops-one/setup-node@v1
+    - name: Use Node.js ${{ inputs.node-version }}
+      uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
-        cache: 'npm'
 
-    - name: Check for package-lock.json
-      id: check_lockfile
-      shell: bash
-      run: |
-        if [ -f "package-lock.json" ]; then
-          echo "lockfile_exists=true" >> $GITHUB_OUTPUT
-          echo "Found package-lock.json"
-        else
-          echo "lockfile_exists=false" >> $GITHUB_OUTPUT
-          echo "No package-lock.json found, will generate one"
-        fi
-
-    - name: Install dependencies (with lockfile)
-      if: steps.check_lockfile.outputs.lockfile_exists == 'true'
-      shell: bash
-      run: npm ci
-
-    - name: Install dependencies and generate lockfile
-      if: steps.check_lockfile.outputs.lockfile_exists == 'false'
-      shell: bash
-      run: |
-        npm install
-        echo "Generated package-lock.json"
-
-    - name: Build application
-      shell: bash
-      run: npm run build
-
-    - name: Security scan with Snyk
-      if: ${{ inputs.snyk-token != '' }}
-      shell: bash
-      run: npx snyk test --token=${{ inputs.snyk-token }}
-
-    - name: SonarQube scan
-      if: ${{ inputs.sonarqube-token != '' && inputs.sonarqube-url != '' }}
-      shell: bash
-      run: |
-        npm install -g sonar-scanner
-        sonar-scanner \
-          -Dsonar.projectKey=react-app \
-          -Dsonar.sources=src \
-          -Dsonar.host.url=${{ inputs.sonarqube-url }} \
-          -Dsonar.login=${{ inputs.sonarqube-token }}
-
-    - name: Upload build artifacts
-      uses: cloudops-one/upload-artifact@v4
+    - name: Cache npm dependencies
+      uses: actions/cache@v4
       with:
-        name: react-build
-        path: |
-          build/
-          package-lock.json
+        path: ~/.npm
+        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+
+    - name: Install dependencies
+      run: npm install
+      shell: bash
+
+    - name: Run build
+      run: npm run build
+      shell: bash
+
+    - name: Skip Husky
+      if: ${{ inputs.skip-husky == 'true' }}
+      run: |
+        if [ -f .husky/pre-commit ]; then
+          mv .husky/pre-commit .husky/pre-commit.bak
+        fi
+      shell: bash
+
+    - name: Generate lockfile
+      if: ${{ inputs.generate-lockfile == 'true' }}
+      run: npm install --package-lock-only
+      shell: bash
