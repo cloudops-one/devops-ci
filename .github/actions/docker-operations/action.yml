@@ -48,6 +48,8 @@ runs:
 
     - name: Build Docker Image
       run: docker build -t ${{ inputs.harbor-registry }}/${{ inputs.project-name }}/${{ inputs.component }}:${{ inputs.docker-tag }} .
+      shell: bash
 
     - name: Push Docker Image
       run: docker push ${{ inputs.harbor-registry }}/${{ inputs.project-name }}/${{ inputs.component }}:${{ inputs.docker-tag }}
+      shell: bash
