@@ -32,8 +32,25 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Validate inputs
+      run: |
+        if [ -z "${{ inputs.harbor-registry }}" ]; then
+          echo "Error: harbor-registry is empty"
+          exit 1
+        fi
+        if [ -z "${{ inputs.harbor-username }}" ]; then
+          echo "Error: harbor-username is empty"
+          exit 1
+        fi
+        if [ -z "${{ inputs.harbor-password }}" ]; then
+          echo "Error: harbor-password is empty"
+          exit 1
+        fi
+      shell: bash
+
     - name: Log in to Harbor
       run: |
+        echo "Logging into Harbor registry: ${{ inputs.harbor-registry }}"
         echo "${{ inputs.harbor-password }}" | \
         docker login -u "${{ inputs.harbor-username }}" \
         --password-stdin "${{ inputs.harbor-registry }}"
@@ -41,6 +58,7 @@ runs:
 
     - name: Build Docker Image for ${{ inputs.component }}
       run: |
+        echo "Building image: ${{ inputs.harbor-registry }}/${{ inputs.project-name }}/${{ inputs.component }}:${{ inputs.docker-tag }}"
         docker build \
           -t ${{ inputs.harbor-registry }}/${{ inputs.project-name }}/${{ inputs.component }}:${{ inputs.docker-tag }} \
           -f ${{ inputs.dockerfile-path }}/Dockerfile \
@@ -49,10 +67,12 @@ runs:
 
     - name: Push ${{ inputs.component }} Image to Harbor
       run: |
+        echo "Pushing image to Harbor..."
         docker push ${{ inputs.harbor-registry }}/${{ inputs.project-name }}/${{ inputs.component }}:${{ inputs.docker-tag }}
       shell: bash
 
     - name: Log out from Harbor
       run: |
         docker logout "${{ inputs.harbor-registry }}"
+        echo "Docker build and push completed successfully!"
       shell: bash
