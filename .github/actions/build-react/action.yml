@@ -39,7 +39,7 @@ runs:
       shell: bash
 
     - name: Upload production-ready build files
-      uses: cloudops-one/upload-artifact@main
+      uses: cloudops-one/upload-artifact@v4
       with:
         name: build-artifact
         path: build
