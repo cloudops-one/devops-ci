@@ -32,42 +32,35 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Validate inputs and secrets
+    - name: Validate inputs
       run: |
         echo "Validating inputs..."
         
         # Check if inputs are provided
-        if [ -z "${{ inputs.HARBOR_REGISTRY }}" ]; then
-          echo "❌ Error: HARBOR_REGISTRY is empty or not provided"
-          exit 1
-        fi
+        required_inputs=(
+          "harbor-registry"
+          "harbor-username" 
+          "harbor-password"
+          "project-name"
+          "component"
+          "docker-tag"
+        )
         
-        if [ -z "${{ inputs.HARBOR_USERNAME }}" ]; then
-          echo "❌ Error: HARBOR_USERNAME is empty or not provided"
-          exit 1
-        fi
-        
-        if [ -z "${{ inputs.HARBOR_PASSWORD }}" ]; then
-          echo "❌ Error: HARBOR_PASSWORD is empty or not provided"
-          exit 1
-        fi
-        
-        if [ -z "${{ inputs.project-name }}" ]; then
-          echo "❌ Error: project-name is empty or not provided"
-          exit 1
-        fi
-        
-        if [ -z "${{ inputs.component }}" ]; then
-          echo "❌ Error: component is empty or not provided"
-          exit 1
-        fi
-        
-        if [ -z "${{ inputs.docker-tag }}" ]; then
-          echo "❌ Error: docker-tag is empty or not provided"
-          exit 1
-        fi
+        for input in "${required_inputs[@]}"; do
+          if [ -z "$(eval echo \$$input)" ]; then
+            echo "❌ Error: $input is empty or not provided"
+            exit 1
+          fi
+        done
         
         echo "✅ All inputs validated successfully"
+      env:
+        harbor-registry: ${{ inputs.harbor-registry }}
+        harbor-username: ${{ inputs.harbor-username }}
+        harbor-password: ${{ inputs.harbor-password }}
+        project-name: ${{ inputs.project-name }}
+        component: ${{ inputs.component }}
+        docker-tag: ${{ inputs.docker-tag }}
       shell: bash
 
     - name: Check Dockerfile existence
@@ -84,64 +77,76 @@ runs:
       run: |
         echo "🔐 Logging into Harbor registry: ${{ inputs.harbor-registry }}"
         
-        # Debug: Check if credentials are actually being passed
-        echo "Username: ${{ inputs.harbor-username }}"
-        echo "Password length: ${#HARBOR_PASSWORD}"
-        
-        # Login to Harbor
-        if ! echo "${{ inputs.harbor-password }}" | \
-           docker login -u "${{ inputs.harbor-username }}" \
-           --password-stdin "${{ inputs.harbor-registry }}"; then
+        # Login to Harbor securely without exposing password in logs
+        if ! echo "$HARBOR_PASSWORD" | \
+           docker login -u "$HARBOR_USERNAME" \
+           --password-stdin "$HARBOR_REGISTRY"; then
           echo "❌ Failed to login to Harbor"
           exit 1
         fi
         
         echo "✅ Successfully logged into Harbor"
       env:
+        HARBOR_REGISTRY: ${{ inputs.harbor-registry }}
+        HARBOR_USERNAME: ${{ inputs.harbor-username }}
         HARBOR_PASSWORD: ${{ inputs.harbor-password }}
       shell: bash
 
-    - name: Build Docker Image for ${{ inputs.component }}
+    - name: Build Docker Image
       run: |
-        echo "🏗️ Building image: ${{ inputs.harbor-registry }}/${{ inputs.project-name }}/${{ inputs.component }}:${{ inputs.docker-tag }}"
+        echo "🏗️ Building Docker image..."
         
         # Build the Docker image
         docker build \
-          -t ${{ inputs.harbor-registry }}/${{ inputs.project-name }}/${{ inputs.component }}:${{ inputs.docker-tag }} \
-          -f ${{ inputs.dockerfile-path }}/Dockerfile \
-          ${{ inputs.context-path }}
+          -t $HARBOR_REGISTRY/$PROJECT_NAME/$COMPONENT:$DOCKER_TAG \
+          -f $DOCKERFILE_PATH/Dockerfile \
+          $CONTEXT_PATH
         
         echo "✅ Docker image built successfully"
+      env:
+        HARBOR_REGISTRY: ${{ inputs.harbor-registry }}
+        PROJECT_NAME: ${{ inputs.project-name }}
+        COMPONENT: ${{ inputs.component }}
+        DOCKER_TAG: ${{ inputs.docker-tag }}
+        DOCKERFILE_PATH: ${{ inputs.dockerfile-path }}
+        CONTEXT_PATH: ${{ inputs.context-path }}
       shell: bash
 
-    - name: Push ${{ inputs.component }} Image to Harbor
+    - name: Push Image to Harbor
       run: |
         echo "🚀 Pushing image to Harbor..."
         
         # Push the Docker image
-        docker push ${{ inputs.harbor-registry }}/${{ inputs.project-name }}/${{ inputs.component }}:${{ inputs.docker-tag }}
+        docker push $HARBOR_REGISTRY/$PROJECT_NAME/$COMPONENT:$DOCKER_TAG
         
         echo "✅ Image pushed successfully to Harbor"
+      env:
+        HARBOR_REGISTRY: ${{ inputs.harbor-registry }}
+        PROJECT_NAME: ${{ inputs.project-name }}
+        COMPONENT: ${{ inputs.component }}
+        DOCKER_TAG: ${{ inputs.docker-tag }}
       shell: bash
 
-    - name: Log out from Harbor and cleanup
+    - name: Log out from Harbor
       run: |
         echo "🔒 Logging out from Harbor..."
-        docker logout "${{ inputs.harbor-registry }}"
-        
-        # List images for verification
-        echo "📦 Final image list:"
-        docker images | grep "${{ inputs.harbor-registry }}"
-        
-        echo "🎉 Docker build and push completed successfully!"
+        docker logout "$HARBOR_REGISTRY"
+        echo "✅ Logged out successfully"
+      env:
+        HARBOR_REGISTRY: ${{ inputs.harbor-registry }}
       shell: bash
 
     - name: Display image information
       run: |
         echo "📋 Image Details:"
-        echo "Registry: ${{ inputs.harbor-registry }}"
-        echo "Project: ${{ inputs.project-name }}"
-        echo "Component: ${{ inputs.component }}"
-        echo "Tag: ${{ inputs.docker-tag }}"
-        echo "Full Image: ${{ inputs.harbor-registry }}/${{ inputs.project-name }}/${{ inputs.component }}:${{ inputs.docker-tag }}"
+        echo "Registry: $HARBOR_REGISTRY"
+        echo "Project: $PROJECT_NAME"
+        echo "Component: $COMPONENT"
+        echo "Tag: $DOCKER_TAG"
+        echo "Full Image: $HARBOR_REGISTRY/$PROJECT_NAME/$COMPONENT:$DOCKER_TAG"
+      env:
+        HARBOR_REGISTRY: ${{ inputs.harbor-registry }}
+        PROJECT_NAME: ${{ inputs.project-name }}
+        COMPONENT: ${{ inputs.component }}
+        DOCKER_TAG: ${{ inputs.docker-tag }}
       shell: bash
