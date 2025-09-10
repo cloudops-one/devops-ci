@@ -1,28 +1,135 @@
 name: 'Security Scan'
-description: 'Runs security scans using Snyk and Trivy'
+description: 'Runs security scans with SonarQube, Trivy, Snyk, Spotless, and JaCoCo'
 
 inputs:
+  image-name:
+    description: 'Docker image name to scan with Trivy'
+    required: true
   snyk-token:
     description: 'Snyk API token'
     required: true
-  image-ref:
-    description: 'Image reference for Trivy scan'
+  sonar-token:
+    description: 'SonarQube token'
+    required: true
+  sonar-host:
+    description: 'SonarQube host URL'
     required: true
 
 runs:
   using: 'composite'
   steps:
-    - name: Snyk Scan
-      uses: cloudops-one/node@master
-      with:
-        args: test
+    # Install required tools (excluding SonarScanner since we'll use the action)
+    - name: Install security tools
+      run: |
+        # Install Trivy
+        sudo apt-get update
+        sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+        echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update
+        sudo apt-get install -y trivy
 
-    - name: Trivy Scan
-      uses: cloudops-one/trivy-action@master
-      with:
-        image-ref: ${{ inputs.image-ref }}
+        # Install Snyk
+        npm install -g snyk
+      shell: bash
 
-    - name: Upload SARIF to GitHub
-      uses: cloudops-one/upload-sarif@v3
+    # SonarQube Scan using official GitHub Action
+    - name: Official SonarQube Scan
+      uses: SonarSource/sonarqube-sscan-action@v5.3.1
+      env:
+        SONAR_TOKEN: ${{ inputs.sonar-token }}
+        SONAR_HOST_URL: ${{ inputs.sonar-host }}
       with:
-        sarif_file: results.sarif
+        args: >
+          -Dsonar.projectKey=portal-irai-yoga-admin
+          -Dsonar.projectName="Portal Irai Yoga Admin"
+          -Dsonar.sources=src
+          -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/build/**,**/*.test.*,**/*.spec.*
+          -Dsonar.tests=src
+          -Dsonar.test.inclusions=**/*.test.*,**/*.spec.*
+          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+          -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info
+          -Dsonar.sourceEncoding=UTF-8
+
+    # Snyk Scan (Dependency Vulnerability Scan)
+    - name: Snyk Auth and Test
+      run: |
+        snyk auth ${{ inputs.snyk-token }}
+        echo "Running Snyk dependency scan..."
+        snyk test --all-projects
+        
+        echo "Monitoring project in Snyk dashboard..."
+        snyk monitor --all-projects
+      shell: bash
+
+    # Trivy Container Scan (Critical!)
+    - name: Trivy Container Scan
+      run: |
+        echo "Scanning Docker image for vulnerabilities..."
+        trivy image --severity HIGH,CRITICAL ${{ inputs.image-name }}
+        
+        # Fail pipeline if critical vulnerabilities found
+        if trivy image --severity CRITICAL ${{ inputs.image-name }} | grep -q "CRITICAL"; then
+          echo "❌ CRITICAL vulnerabilities found in container image!"
+          exit 1
+        fi
+        
+        # Also fail on high severity vulnerabilities
+        if trivy image --severity HIGH ${{ inputs.image-name }} | grep -q "HIGH"; then
+          echo "❌ HIGH severity vulnerabilities found in container image!"
+          exit 1
+        fi
+        
+        echo "✅ No critical vulnerabilities found in container image"
+      shell: bash
+
+    # Spotless Code Formatting Check
+    - name: Code Formatting Check
+      run: |
+        echo "Checking code formatting..."
+        # Check JavaScript/TypeScript formatting with prettier
+        npx prettier --check . || {
+          echo "❌ Code formatting issues found. Run 'npx prettier --write .' to fix"
+          exit 1
+        }
+        
+        echo "Running ESLint..."
+        npx eslint . --ext .js,.jsx,.ts,.tsx --max-warnings=0 || {
+          echo "❌ ESLint issues found"
+          exit 1
+        }
+        
+        echo "✅ Code formatting check passed"
+      shell: bash
+
+    # JaCoCo Code Coverage (for Java projects - optional)
+    - name: Code Coverage Check
+      run: |
+        # Only run if it's a Java project
+        if [ -f "pom.xml" ]; then
+          echo "Java project detected, running JaCoCo..."
+          mvn test jacoco:report
+          mvn jacoco:check
+        elif [ -f "build.gradle" ]; then
+          echo "Gradle project detected, running JaCoCo..."
+          ./gradlew test jacocoTestReport
+          ./gradlew jacocoTestCoverageVerification
+        else
+          echo "No Java project detected, skipping JaCoCo"
+        fi
+      shell: bash
+
+    # Final security status check
+    - name: Security Scan Summary
+      run: |
+        echo " "
+        echo "🔒 SECURITY SCAN SUMMARY"
+        echo "========================"
+        echo "✅ SonarQube: Code quality and security analysis completed"
+        echo "✅ Snyk: Dependency vulnerabilities checked"
+        echo "✅ Trivy: Container vulnerabilities checked"
+        echo "✅ Code formatting: Verified"
+        echo "✅ Code coverage: Verified (if Java project)"
+        echo " "
+        echo "All security checks passed! 🎉"
+      shell: bash
