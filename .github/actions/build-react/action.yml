@@ -26,6 +26,10 @@ runs:
       run: npm install
       shell: bash
 
+    - name: Run lint and autofix
+      run: npm run lint --fix
+      shell: bash
+
     - name: Run build
       run: npm run build
       shell: bash
@@ -34,7 +38,7 @@ runs:
       uses: cloudops-one/upload-artifact@main
       with:
         name: build-artifact
-        path: dist  # ← CHANGED FROM 'build' TO 'dist'
+        path: dist
 
     - name: Skip Husky
       if: ${{ inputs.skip-husky == 'true' }}
