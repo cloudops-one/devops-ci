@@ -1,49 +1,52 @@
 name: 'Docker Operations'
-description: 'Builds and pushes a Docker image to a specified registry with a given tag.'
+description: 'Builds and optionally pushes a Docker image.'
 inputs:
   project-name:
     required: true
     type: string
-    description: The name of the project.
   component:
     required: true
     type: string
-    description: The name of the component.
   harbor-registry:
     required: true
     type: string
-    description: The Harbor registry URL.
   docker-tag:
     required: true
     type: string
-    description: A specific tag for the image.
   harbor-username:
-    required: true
-    description: The username for the Harbor registry.
+    required: false  # ← Make optional (not needed for build-only)
+    type: string
   harbor-password:
-    required: true
-    description: The password for the Harbor registry.
+    required: false  # ← Make optional (not needed for build-only)
+    type: string
+  push-image:  # ← NEW PARAMETER
+    required: false
+    type: boolean
+    default: false  # ← Default to false for safety
+    description: 'Push image to registry after building'
 
 runs:
   using: 'composite'
   steps:
     - name: Log in to Docker Registry
+      if: ${{ inputs.push-image == 'true' && inputs.harbor-username != '' && inputs.harbor-password != '' }}
       run: |
         echo "${{ inputs.harbor-password }}" | docker login ${{ inputs.harbor-registry }} --username ${{ inputs.harbor-username }} --password-stdin
       shell: bash
 
-    - name: Build and Tag Docker Image
+    - name: Build Docker Image
       run: |
         docker build -t ${{ inputs.harbor-registry }}/${{ inputs.project-name }}/${{ inputs.component }}:${{ inputs.docker-tag }} .
       shell: bash
     
     - name: Push Docker Image
+      if: ${{ inputs.push-image == 'true' }}
       run: |
         docker push ${{ inputs.harbor-registry }}/${{ inputs.project-name }}/${{ inputs.component }}:${{ inputs.docker-tag }}
       shell: bash
 
     - name: Log out from Docker Registry
-      if: always()
+      if: ${{ inputs.push-image == 'true' }}
       run: |
         docker logout ${{ inputs.harbor-registry }}
       shell: bash
