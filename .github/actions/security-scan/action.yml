@@ -33,9 +33,9 @@ runs:
         npm install -g snyk
       shell: bash
 
-    # SonarQube Scan using official GitHub Action
+    # SonarQube Scan using your forked GitHub Action
     - name: Official SonarQube Scan
-      uses: SonarSource/sonarqube-sscan-action@v5.3.1
+      uses: cloudops-one/sonarqube-scan-action@v5.3.1
       env:
         SONAR_TOKEN: ${{ inputs.sonar-token }}
         SONAR_HOST_URL: ${{ inputs.sonar-host }}
