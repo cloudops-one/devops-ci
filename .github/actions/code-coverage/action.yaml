@@ -26,10 +26,10 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: cloudops-one/checkout@v4
 
     - name: Setup Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
+      uses: cloudops-one/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'npm'
@@ -53,16 +53,16 @@ jobs:
             const fs = require('fs');
             const coverage = JSON.parse(fs.readFileSync('./coverage/coverage-summary.json', 'utf8'));
             const thresholds = {
-              statements: $THRESHOLD_STATEMENTS,
-              branches: $THRESHOLD_BRANCHES,
-              functions: $THRESHOLD_FUNCTIONS,
-              lines: $THRESHOLD_LINES
+              statements: process.env.THRESHOLD_STATEMENTS,
+              branches: process.env.THRESHOLD_BRANCHES,
+              functions: process.env.THRESHOLD_FUNCTIONS,
+              lines: process.env.THRESHOLD_LINES
             };
             
             let failed = false;
             Object.keys(thresholds).forEach(type => {
               const actual = coverage.total[type]?.pct || 0;
-              const required = thresholds[type];
+              const required = parseFloat(thresholds[type]);
               if (actual < required) {
                 console.error('❌ ' + type.charAt(0).toUpperCase() + type.slice(1) + 
                              ' coverage too low: ' + actual + '% (required: ' + required + '%)');
@@ -74,7 +74,7 @@ jobs:
             });
             
             if (failed) {
-              console.log('\\n📊 Full coverage summary:');
+              console.log('\n📊 Full coverage summary:');
               console.log(JSON.stringify(coverage.total, null, 2));
               process.exit(1);
             }
@@ -86,7 +86,7 @@ jobs:
         fi
 
     - name: Upload coverage report
-      uses: actions/upload-artifact@v4
+      uses: cloudops-one/upload-artifact@v4
       with:
         name: coverage-report-${{ matrix.node-version }}
         path: coverage/
@@ -111,29 +111,3 @@ jobs:
           echo "  Functions: $THRESHOLD_FUNCTIONS%"
           echo "  Lines: $THRESHOLD_LINES%"
         fi
-
-  upload-coverage:
-    name: Upload Coverage Reports
-    needs: test-with-coverage
-    runs-on: ubuntu-latest
-    if: always()
-    
-    steps:
-    - name: Download coverage artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: coverage-reports
-
-    - name: Upload to Codecov
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./coverage-reports/**/cobertura-coverage.xml
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: false
-
-    - name: Upload to Coveralls
-      uses: coverallsapp/github-action@v2
-      with:
-        file-path: ./coverage-reports/**/lcov.info
-        fail-on-error: false
