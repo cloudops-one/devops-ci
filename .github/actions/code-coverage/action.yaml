@@ -1,0 +1,139 @@
+name: Test & Coverage
+
+on:
+  push:
+    branches: ['**']
+    tags: ['v*', '*.*.*']
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20'
+  COVERAGE_FORMAT: 'cobertura'
+  THRESHOLD_STATEMENTS: 80
+  THRESHOLD_BRANCHES: 70
+  THRESHOLD_FUNCTIONS: 75
+  THRESHOLD_LINES: 80
+
+jobs:
+  test-with-coverage:
+    name: Run Tests with Coverage
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run tests with coverage
+      run: |
+        npx jest --coverage \
+          --coverageReporters=text,json,lcov,cobertura \
+          --coverageDirectory=./coverage \
+          --collectCoverageFrom="src/**/*.{js,jsx,ts,tsx}" \
+          --testFailureExitCode=0
+
+    - name: Check coverage thresholds
+      run: |
+        if [ -f "coverage/coverage-summary.json" ]; then
+          echo "📊 Checking coverage thresholds..."
+          node -e "
+            const fs = require('fs');
+            const coverage = JSON.parse(fs.readFileSync('./coverage/coverage-summary.json', 'utf8'));
+            const thresholds = {
+              statements: $THRESHOLD_STATEMENTS,
+              branches: $THRESHOLD_BRANCHES,
+              functions: $THRESHOLD_FUNCTIONS,
+              lines: $THRESHOLD_LINES
+            };
+            
+            let failed = false;
+            Object.keys(thresholds).forEach(type => {
+              const actual = coverage.total[type]?.pct || 0;
+              const required = thresholds[type];
+              if (actual < required) {
+                console.error('❌ ' + type.charAt(0).toUpperCase() + type.slice(1) + 
+                             ' coverage too low: ' + actual + '% (required: ' + required + '%)');
+                failed = true;
+              } else {
+                console.log('✅ ' + type.charAt(0).toUpperCase() + type.slice(1) + 
+                           ' coverage: ' + actual + '% (required: ' + required + '%)');
+              }
+            });
+            
+            if (failed) {
+              console.log('\\n📊 Full coverage summary:');
+              console.log(JSON.stringify(coverage.total, null, 2));
+              process.exit(1);
+            }
+            console.log('🎉 All coverage thresholds met!');
+          "
+        else
+          echo "❌ Coverage report not found"
+          exit 1
+        fi
+
+    - name: Upload coverage report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report-${{ matrix.node-version }}
+        path: coverage/
+        if-no-files-found: ignore
+
+    - name: Display coverage summary
+      run: |
+        if [ -f "coverage/coverage-summary.json" ]; then
+          echo "📊 Coverage Report Summary:"
+          echo "=========================="
+          node -e "
+            const fs = require('fs');
+            const coverage = JSON.parse(fs.readFileSync('./coverage/coverage-summary.json', 'utf8'));
+            console.log('Statements:', coverage.total.statements.pct + '%');
+            console.log('Branches:', coverage.total.branches.pct + '%');
+            console.log('Functions:', coverage.total.functions.pct + '%');
+            console.log('Lines:', coverage.total.lines.pct + '%');
+          "
+          echo "📈 Thresholds:"
+          echo "  Statements: $THRESHOLD_STATEMENTS%"
+          echo "  Branches: $THRESHOLD_BRANCHES%"
+          echo "  Functions: $THRESHOLD_FUNCTIONS%"
+          echo "  Lines: $THRESHOLD_LINES%"
+        fi
+
+  upload-coverage:
+    name: Upload Coverage Reports
+    needs: test-with-coverage
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Download coverage artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: coverage-reports
+
+    - name: Upload to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage-reports/**/cobertura-coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+    - name: Upload to Coveralls
+      uses: coverallsapp/github-action@v2
+      with:
+        file-path: ./coverage-reports/**/lcov.info
+        fail-on-error: false
