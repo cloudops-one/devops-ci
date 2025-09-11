@@ -85,13 +85,6 @@ jobs:
           exit 1
         fi
 
-    - name: Upload coverage report
-      uses: cloudops-one/upload-artifact@v4
-      with:
-        name: coverage-report-${{ matrix.node-version }}
-        path: coverage/
-        if-no-files-found: ignore
-
     - name: Display coverage summary
       run: |
         if [ -f "coverage/coverage-summary.json" ]; then
