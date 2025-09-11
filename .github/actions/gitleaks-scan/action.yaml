@@ -1,0 +1,82 @@
+name: 'Gitleaks Secret Scanner'
+description: 'Centralized secret scanning action'
+
+inputs:
+  scan-path:
+    description: 'Path to scan'
+    required: false
+    default: '.'
+  fail-on-leak:
+    description: 'Fail workflow if leaks found'
+    required: false
+    default: 'true'
+  config-path:
+    description: 'Custom config path'
+    required: false
+    default: '.gitleaks.toml'
+  redact-secrets:
+    description: 'Redact secrets from logs'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Gitleaks and jq
+      shell: bash
+      run: |
+        curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | \
+          grep "browser_download_url.*linux_x64.tar.gz" | \
+          cut -d '"' -f 4 | \
+          xargs curl -sL | \
+          tar xz -C /usr/local/bin gitleaks
+        sudo apt-get install -y jq
+
+    - name: Run Gitleaks scan
+      shell: bash
+      run: |
+        echo "🔍 Starting centralized Gitleaks scan..."
+        echo "Repository: ${{ github.repository }}"
+        echo "Scan path: ${{ inputs.scan-path }}"
+        echo "===================================="
+        
+        # Build config argument
+        CONFIG_ARG=""
+        if [ -f "${{ inputs.config-path }}" ]; then
+          CONFIG_ARG="--config ${{ inputs.config-path }}"
+          echo "Using custom config: ${{ inputs.config-path }}"
+        fi
+        
+        # Build redact argument
+        REDACT_ARG=""
+        if [ "${{ inputs.redact-secrets }}" = "true" ]; then
+          REDACT_ARG="--redact"
+        fi
+        
+        # Run scan
+        gitleaks detect --source "${{ inputs.scan-path }}" $CONFIG_ARG $REDACT_ARG \
+          --report-format json --report-path /tmp/gitleaks-report.json || true
+        
+        # Process results
+        if [ -f /tmp/gitleaks-report.json ] && [ -s /tmp/gitleaks-report.json ]; then
+          echo "❌ SECRETS DETECTED!"
+          echo "===================="
+          
+          COUNT=$(jq length /tmp/gitleaks-report.json)
+          echo "📊 Total findings: $COUNT"
+          echo ""
+          
+          echo "📁 FILE PATH | 🎯 RULE ID | 📍 LINE"
+          echo "-----------------------------------"
+          jq -r '.[] | "\(.File) | \(.Rule) | \(.StartLine)"' /tmp/gitleaks-report.json | head -10
+          
+          if [ $COUNT -gt 10 ]; then
+            echo "... and $((COUNT - 10)) more findings"
+          fi
+          
+          if [ "${{ inputs.fail-on-leak }}" = "true" ]; then
+            exit 1
+          fi
+        else
+          echo "✅ SUCCESS: No secrets detected!"
+        fi
