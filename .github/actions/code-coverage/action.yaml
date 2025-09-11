@@ -27,23 +27,45 @@ runs:
   using: 'composite'
   steps:
     - name: Setup Node.js ${{ inputs.node-version }}
-      uses: cloudops-one/setup-node@v1
+      uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
-        # NO cache configuration - completely skipped
 
     - name: Install dependencies
       shell: bash
       run: npm install
 
-    - name: Run tests with coverage
+    - name: Check if test files exist
       shell: bash
+      run: |
+        # Check for common test file patterns
+        if [ -d "tests" ] || [ -d "__tests__" ] || [ -d "test" ] || \
+           find . -name "*.test.*" -o -name "*.spec.*" -o -name "test-*.js" | grep -q .; then
+          echo "✅ Test files found, running tests..."
+          HAS_TESTS=true
+        else
+          echo "⚠️ No test files found. Skipping test execution."
+          HAS_TESTS=false
+        fi
+        echo "HAS_TESTS=$HAS_TESTS" >> $GITHUB_ENV
+
+    - name: Run tests with coverage (if tests exist)
+      shell: bash
+      if: env.HAS_TESTS == 'true'
       run: |
         npx jest --coverage \
           --coverageReporters=text,json,lcov,cobertura \
           --coverageDirectory=./coverage \
           --collectCoverageFrom="src/**/*.{js,jsx,ts,tsx}" \
-          --testFailureExitCode=0
+          --passWithNoTests
+
+    - name: Skip tests (if no tests exist)
+      shell: bash
+      if: env.HAS_TESTS == 'false'
+      run: |
+        echo "📝 Creating empty coverage report since no tests were found"
+        mkdir -p coverage
+        echo '{"total": {"statements": {"pct": 0}, "branches": {"pct": 0}, "functions": {"pct": 0}, "lines": {"pct": 0}}}' > coverage/coverage-summary.json
 
     - name: Check coverage thresholds
       shell: bash
