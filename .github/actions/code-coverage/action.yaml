@@ -30,6 +30,7 @@ runs:
       uses: cloudops-one/setup-node@v1
       with:
         node-version: ${{ inputs.node-version }}
+        # Cache removed since we can't specify the pattern
         cache: 'npm'
 
     - name: Install dependencies
@@ -53,11 +54,38 @@ runs:
         THRESHOLD_FUNCTIONS: ${{ inputs.threshold-functions }}
         THRESHOLD_LINES: ${{ inputs.threshold-lines }}
       run: |
-        # Your entire threshold check script here
         if [ -f "coverage/coverage-summary.json" ]; then
           echo "📊 Checking coverage thresholds..."
           node -e "
-            // ... your full node script ...
+            const fs = require('fs');
+            const coverage = JSON.parse(fs.readFileSync('./coverage/coverage-summary.json', 'utf8'));
+            const thresholds = {
+              statements: process.env.THRESHOLD_STATEMENTS,
+              branches: process.env.THRESHOLD_BRANCHES,
+              functions: process.env.THRESHOLD_FUNCTIONS,
+              lines: process.env.THRESHOLD_LINES
+            };
+            
+            let failed = false;
+            Object.keys(thresholds).forEach(type => {
+              const actual = coverage.total[type]?.pct || 0;
+              const required = parseFloat(thresholds[type]);
+              if (actual < required) {
+                console.error('❌ ' + type.charAt(0).toUpperCase() + type.slice(1) + 
+                             ' coverage too low: ' + actual + '% (required: ' + required + '%)');
+                failed = true;
+              } else {
+                console.log('✅ ' + type.charAt(0).toUpperCase() + type.slice(1) + 
+                           ' coverage: ' + actual + '% (required: ' + required + '%)');
+              }
+            });
+            
+            if (failed) {
+              console.log('\n📊 Full coverage summary:');
+              console.log(JSON.stringify(coverage.total, null, 2));
+              process.exit(1);
+            }
+            console.log('🎉 All coverage thresholds met!');
           "
         else
           echo "❌ Coverage report not found"
@@ -72,12 +100,16 @@ runs:
         THRESHOLD_FUNCTIONS: ${{ inputs.threshold-functions }}
         THRESHOLD_LINES: ${{ inputs.threshold-lines }}
       run: |
-        # Your entire display summary script here
         if [ -f "coverage/coverage-summary.json" ]; then
           echo "📊 Coverage Report Summary:"
           echo "=========================="
           node -e "
-            // ... your full node script ...
+            const fs = require('fs');
+            const coverage = JSON.parse(fs.readFileSync('./coverage/coverage-summary.json', 'utf8'));
+            console.log('Statements:', coverage.total.statements.pct + '%');
+            console.log('Branches:', coverage.total.branches.pct + '%');
+            console.log('Functions:', coverage.total.functions.pct + '%');
+            console.log('Lines:', coverage.total.lines.pct + '%');
           "
           echo "📈 Thresholds:"
           echo "  Statements: $THRESHOLD_STATEMENTS%"
