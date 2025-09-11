@@ -27,15 +27,14 @@ runs:
   using: 'composite'
   steps:
     - name: Setup Node.js ${{ inputs.node-version }}
-      uses: cloudops-one/setup-node@v1
+      uses: actions/setup-node@v4
       with:
         node-version: ${{ inputs.node-version }}
-        # Cache removed since we can't specify the pattern
-        cache: 'npm'
+        # NO cache configuration - completely skipped
 
     - name: Install dependencies
       shell: bash
-      run: npm ci
+      run: npm install
 
     - name: Run tests with coverage
       shell: bash
