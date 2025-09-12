@@ -1,5 +1,5 @@
 name: 'Gradle Build'
-description: 'Centralized Gradle build with caching and configuration'
+description: 'Centralized Gradle build with caching, Spotless formatting, and configuration'
 
 inputs:
   java-version:
@@ -16,6 +16,14 @@ inputs:
     default: 'build -x test'
   cache-enabled:
     description: 'Enable caching'
+    required: false
+    default: 'true'
+  spotless-apply:
+    description: 'Apply Spotless code formatting before build'
+    required: false
+    default: 'true'
+  skip-tests:
+    description: 'Skip tests during build'
     required: false
     default: 'true'
 
@@ -49,9 +57,49 @@ runs:
         echo "Gradle cache directories created"
       shell: bash
 
-    - name: Run Gradle build
+    - name: Check if Spotless plugin is configured
+      id: spotless-check
       run: |
-        echo "Running Gradle tasks: ${{ inputs.tasks }}"
+        if [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
+          if grep -q "spotless" build.gradle 2>/dev/null || grep -q "spotless" build.gradle.kts 2>/dev/null; then
+            echo "spotless-enabled=true" >> $GITHUB_OUTPUT
+            echo "Spotless plugin detected in build file"
+          else
+            echo "spotless-enabled=false" >> $GITHUB_OUTPUT
+            echo "Spotless plugin not found in build file"
+          fi
+        else
+          echo "spotless-enabled=false" >> $GITHUB_OUTPUT
+          echo "No Gradle build file found"
+        fi
+      shell: bash
+
+    - name: Apply Spotless formatting
+      if: inputs.spotless-apply == 'true' && steps.spotless-check.outputs.spotless-enabled == 'true'
+      run: |
+        echo "Applying Spotless code formatting..."
+        ./gradlew spotlessApply
+        echo "Spotless formatting completed"
+      shell: bash
+
+    - name: Build with skipped tests
+      if: inputs.skip-tests == 'true'
+      run: |
+        echo "Running Gradle build with skipped tests"
+        ./gradlew build -x test
+      shell: bash
+
+    - name: Build with tests
+      if: inputs.skip-tests == 'false'
+      run: |
+        echo "Running Gradle build with tests"
+        ./gradlew build
+      shell: bash
+
+    - name: Run additional tasks
+      if: inputs.tasks != '' && inputs.tasks != 'build -x test' && inputs.tasks != 'build'
+      run: |
+        echo "Running additional Gradle tasks: ${{ inputs.tasks }}"
         ./gradlew ${{ inputs.tasks }}
       shell: bash
 
@@ -63,4 +111,19 @@ runs:
           echo "Build output:"
           ls -la build/libs/
         fi
+        
+        # Check if build was successful
+        if [ -d "build/libs" ] && [ "$(ls -A build/libs 2>/dev/null)" ]; then
+          echo "✅ Build completed successfully with artifacts"
+        else
+          echo "⚠️  Build completed but no artifacts found in build/libs/"
+        fi
+      shell: bash
+
+    - name: Check Spotless status
+      if: inputs.spotless-apply == 'true' && steps.spotless-check.outputs.spotless-enabled == 'true'
+      run: |
+        echo "Checking Spotless status..."
+        ./gradlew spotlessCheck
+        echo "✅ Spotless check passed - code is properly formatted"
       shell: bash
