@@ -19,15 +19,12 @@ runs:
     - name: Checkout code
       uses: cloudops-one/checkout@v4
 
-    - name: Setup Java manually
-      run: |
-        # Download and setup Java manually
-        JAVA_VERSION=${{ inputs.java-version }}
-        wget https://github.com/adoptium/temurin${JAVA_VERSION}-binaries/releases/download/jdk-${JAVA_VERSION}%2B7/OpenJDK${JAVA_VERSION}U-jdk_x64_linux_hotspot_${JAVA_VERSION}_7.tar.gz
-        tar -xzf OpenJDK${JAVA_VERSION}U-jdk_x64_linux_hotspot_${JAVA_VERSION}_7.tar.gz
-        echo "$PWD/jdk${JAVA_VERSION}+7/bin" >> $GITHUB_PATH
-        echo "JAVA_HOME=$PWD/jdk${JAVA_VERSION}+7" >> $GITHUB_ENV
-      shell: bash
+    - name: Setup Java
+      uses: cloudops-one/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: ${{ inputs.java-version }}
+        cache: ${{ inputs.build-tool }}
 
     - name: Verify Java installation
       run: |
