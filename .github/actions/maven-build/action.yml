@@ -1,0 +1,48 @@
+name: 'Maven Build'
+description: 'Centralized Maven build with caching'
+
+inputs:
+  java-version:
+    description: 'Java version to use'
+    required: true
+    default: '17'
+  goals:
+    description: 'Maven goals to run'
+    required: false
+    default: 'clean compile -DskipTests'
+  cache-enabled:
+    description: 'Enable caching'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Java
+      uses: cloudops-one/setup-java@v4
+      with:
+        java-version: ${{ inputs.java-version }}
+        distribution: 'temurin'
+        cache: 'maven'
+
+    - name: Setup Maven cache directories
+      run: |
+        mkdir -p ~/.m2/repository
+        echo "Maven cache directory created"
+      shell: bash
+
+    - name: Run Maven build
+      run: |
+        echo "Running Maven goals: ${{ inputs.goals }}"
+        mvn ${{ inputs.goals }}
+      shell: bash
+
+    - name: Verify build artifacts
+      run: |
+        echo "Build artifacts:"
+        find . -name "target/*.jar" -o -name "target/*.war" | head -10
+        if [ -d "target" ]; then
+          echo "Build output:"
+          ls -la target/
+        fi
+      shell: bash
