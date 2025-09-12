@@ -1,0 +1,66 @@
+name: 'Gradle Build'
+description: 'Centralized Gradle build with caching and configuration'
+
+inputs:
+  java-version:
+    description: 'Java version to use'
+    required: true
+    default: '17'
+  gradle-version:
+    description: 'Gradle version to use'
+    required: false
+    default: '8.5'
+  tasks:
+    description: 'Gradle tasks to run'
+    required: false
+    default: 'build -x test'
+  cache-enabled:
+    description: 'Enable caching'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Java
+      uses: cloudops-one/setup-java@v4
+      with:
+        java-version: ${{ inputs.java-version }}
+        distribution: 'temurin'
+        cache: 'gradle'
+
+    - name: Set execute permissions for gradlew
+      run: |
+        if [ -f "gradlew" ]; then
+          echo "Setting execute permissions for gradlew"
+          chmod +x gradlew
+          ls -la gradlew
+        else
+          echo "gradlew file not found, generating Gradle wrapper..."
+          gradle wrapper --gradle-version ${{ inputs.gradle-version }}
+          chmod +x gradlew
+        fi
+      shell: bash
+
+    - name: Setup Gradle cache directories
+      run: |
+        mkdir -p ~/.gradle/caches
+        mkdir -p ~/.gradle/wrapper
+        echo "Gradle cache directories created"
+      shell: bash
+
+    - name: Run Gradle build
+      run: |
+        echo "Running Gradle tasks: ${{ inputs.tasks }}"
+        ./gradlew ${{ inputs.tasks }}
+      shell: bash
+
+    - name: Verify build artifacts
+      run: |
+        echo "Build artifacts:"
+        find . -name "*.jar" -o -name "*.war" -o -name "build/libs/*" | head -10
+        if [ -d "build/libs" ]; then
+          echo "Build output:"
+          ls -la build/libs/
+        fi
+      shell: bash
