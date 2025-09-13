@@ -1,0 +1,35 @@
+name: 'Snyk Security Scan'
+description: 'Runs Snyk dependency vulnerability scan'
+
+inputs:
+  snyk-token:
+    description: 'Snyk API token'
+    required: true
+  node-version:
+    description: 'Node.js version to use'
+    required: false
+    default: '20'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      uses: cloudops-one/setup-node@v1
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+      shell: bash
+
+    - name: Snyk Auth and Test
+      run: |
+        snyk auth ${{ inputs.snyk-token }}
+        echo "Running Snyk dependency scan..."
+        snyk test --all-projects
+        
+        echo "Monitoring project in Snyk dashboard..."
+        snyk monitor --all-projects
+        echo "✅ Snyk scan completed successfully"
+      shell: bash
