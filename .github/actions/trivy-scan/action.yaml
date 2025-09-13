@@ -1,0 +1,30 @@
+name: 'Trivy Container Scan'
+description: 'Runs Trivy container vulnerability scan'
+
+inputs:
+  image-name:
+    description: 'Docker image name to scan with Trivy'
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Trivy Container Scan
+      run: |
+        echo "Scanning Docker image for vulnerabilities..."
+        trivy image --severity HIGH,CRITICAL ${{ inputs.image-name }}
+        
+        # Fail pipeline if critical vulnerabilities found
+        if trivy image --severity CRITICAL ${{ inputs.image-name }} | grep -q "CRITICAL"; then
+          echo "❌ CRITICAL vulnerabilities found in container image!"
+          exit 1
+        fi
+        
+        # Also fail on high severity vulnerabilities
+        if trivy image --severity HIGH ${{ inputs.image-name }} | grep -q "HIGH"; then
+          echo "❌ HIGH severity vulnerabilities found in container image!"
+          exit 1
+        fi
+        
+        echo "✅ No critical vulnerabilities found in container image"
+      shell: bash
