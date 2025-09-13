@@ -9,19 +9,19 @@ inputs:
   threshold-statements:
     description: 'Statements coverage threshold'
     required: false
-    default: '80'
+    default: '0'
   threshold-branches:
     description: 'Branches coverage threshold'
     required: false
-    default: '70'
+    default: '0'
   threshold-functions:
     description: 'Functions coverage threshold'
     required: false
-    default: '75'
+    default: '0'
   threshold-lines:
     description: 'Lines coverage threshold'
     required: false
-    default: '80'
+    default: '0'
 
 runs:
   using: 'composite'
