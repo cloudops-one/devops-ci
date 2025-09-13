@@ -33,24 +33,6 @@ runs:
         npm install -g snyk
       shell: bash
 
-    # SonarQube Scan using your forked GitHub Action
-    - name: Official SonarQube Scan
-      uses: cloudops-one/sonarqube-scan-action@v5.3.1
-      env:
-        SONAR_TOKEN: ${{ inputs.sonar-token }}
-        SONAR_HOST_URL: ${{ inputs.sonar-host }}
-      with:
-        args: >
-          -Dsonar.projectKey=portal-irai-yoga-admin
-          -Dsonar.projectName="Portal Irai Yoga Admin"
-          -Dsonar.sources=src
-          -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/build/**,**/*.test.*,**/*.spec.*
-          -Dsonar.tests=src
-          -Dsonar.test.inclusions=**/*.test.*,**/*.spec.*
-          -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
-          -Dsonar.typescript.lcov.reportPaths=coverage/lcov.info
-          -Dsonar.sourceEncoding=UTF-8
-
     # Snyk Scan (Dependency Vulnerability Scan)
     - name: Snyk Auth and Test
       run: |
