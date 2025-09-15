@@ -1,21 +1,9 @@
 name: 'Install Security Tools'
 description: 'Installs security scanning tools (Trivy, Snyk)'
 
-inputs:
-  node-version:
-    description: 'Node.js version to use'
-    required: false
-    default: '20'
-
 runs:
   using: 'composite'
   steps:
-    - name: Setup Node.js
-      uses: cloudops-one/setup-node@v1
-      with:
-        node-version: ${{ inputs.node-version }}
-        cache: 'npm'
-
     - name: Install security tools
       run: |
         # Install Trivy
@@ -27,7 +15,9 @@ runs:
         sudo apt-get install -y trivy
 
         # Install Snyk
-        npm install -g snyk
+        curl -sL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+        sudo apt-get install -y nodejs
+        sudo npm install -g snyk
         
         echo "✅ Security tools installed successfully"
       shell: bash
