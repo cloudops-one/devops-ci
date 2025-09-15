@@ -1,5 +1,5 @@
 name: 'Snyk Container Scan'
-description: 'Runs Snyk container security scanning with display name formatting'
+description: 'Runs Snyk container security scanning'
 
 inputs:
   image-name:
@@ -35,14 +35,13 @@ runs:
         IMAGE_NAME=$(echo "${{ inputs.image-name }}" | cut -d'/' -f2- | cut -d':' -f1)
         echo "Using display name: $IMAGE_NAME"
         
-        # Scan with custom display name
+        # Test the container for vulnerabilities
         snyk container test "${{ inputs.image-name }}" \
-          --severity-threshold=${{ inputs.severity-threshold }} \
-          --app-vulns="$IMAGE_NAME"
+          --severity-threshold=${{ inputs.severity-threshold }}
         
-        # Monitor with custom name
-        snyk container monitor "${{ inputs.image-name }}" \
-          --app-vulns="$IMAGE_NAME"
+        # Monitor the container (send results to Snyk platform)
+        snyk container monitor "${{ inputs.image-name }}"
         
         echo "✅ Snyk container scan completed"
       shell: bash
+      
