@@ -1,63 +1,48 @@
-# .github/actions/snyk-scan/action.yaml (Refined Snyk action)
-name: 'Snyk Security Scan'
-description: 'Runs Snyk dependency and container vulnerability scan'
+name: 'Snyk Container Scan'
+description: 'Runs Snyk container security scanning with display name formatting'
 
 inputs:
+  image-name:
+    description: 'Full Docker image name with tag to scan'
+    required: true
   snyk-token:
     description: 'Snyk API token'
     required: true
-  node-version:
-    description: 'Node.js version'
+  severity-threshold:
+    description: 'Severity threshold for failing the scan'
     required: false
-    default: '20'
-  target:
-    description: 'The Snyk command to run (e.g., test or monitor)'
-    required: true
-    default: 'test'
-  project-path:
-    description: 'Path to the project to scan'
-    required: false
-    default: '.'
+    default: 'high'
 
 runs:
   using: 'composite'
   steps:
-    - name: Setup Node.js
-      uses: cloudops-one/setup-node@v1
-      with:
-        node-version: ${{ inputs.node-version }}
-        cache: 'npm'
-
     - name: Install Snyk CLI
-      run: npm install -g snyk
-      shell: bash
-
-    - name: Install Dependencies
       run: |
-        if [ -f "package-lock.json" ]; then
-          npm ci --no-audit --no-fund
-        elif [ -f "yarn.lock" ]; then
-          npm install -g yarn
-          yarn install --frozen-lockfile --ignore-engines
-        else
-          echo "No lock file found. Running npm install."
-          npm install --no-audit --no-fund
-        fi
-      working-directory: ${{ inputs.project-path }}
+        npm install -g snyk
       shell: bash
 
     - name: Authenticate Snyk
-      run: snyk auth ${{ inputs.snyk-token }}
+      run: |
+        snyk auth ${{ inputs.snyk-token }}
+        echo "✅ Snyk authenticated successfully"
       shell: bash
 
-    - name: Run Snyk scan
-      if: ${{ inputs.target == 'test' }}
+    - name: Run Snyk Container Scan
       run: |
-        snyk test --all-projects --severity-threshold=high
-      shell: bash
-
-    - name: Run Snyk monitor
-      if: ${{ inputs.target == 'monitor' }}
-      run: |
-        snyk monitor --all-projects
+        echo "Running Snyk container scan on: ${{ inputs.image-name }}"
+        
+        # Extract just the image name without registry for display
+        IMAGE_NAME=$(echo "${{ inputs.image-name }}" | cut -d'/' -f2- | cut -d':' -f1)
+        echo "Using display name: $IMAGE_NAME"
+        
+        # Scan with custom display name
+        snyk container test "${{ inputs.image-name }}" \
+          --severity-threshold=${{ inputs.severity-threshold }} \
+          --app-vulns="$IMAGE_NAME"
+        
+        # Monitor with custom name
+        snyk container monitor "${{ inputs.image-name }}" \
+          --app-vulns="$IMAGE_NAME"
+        
+        echo "✅ Snyk container scan completed"
       shell: bash
