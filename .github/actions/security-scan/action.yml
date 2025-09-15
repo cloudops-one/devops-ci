@@ -41,14 +41,20 @@ runs:
         echo "✅ Snyk authenticated successfully"
       shell: bash
 
-    # Snyk Container Scan
+    # Snyk Container Scan - UPDATED WITH DISPLAY NAME
     - name: Snyk Container Scan
       run: |
         echo "Running Snyk container scan..."
-        snyk container test ${{ inputs.image-name }} --severity-threshold=high
         
-        # Monitor the image in Snyk dashboard
-        snyk container monitor ${{ inputs.image-name }}
+        # Extract just the image name without registry
+        IMAGE_NAME=$(echo "${{ inputs.image-name }}" | cut -d'/' -f2- | cut -d':' -f1)
+        echo "Using display name: $IMAGE_NAME"
+        
+        # Scan with custom display name
+        snyk container test ${{ inputs.image-name }} --severity-threshold=high --app-vulns=$IMAGE_NAME
+        
+        # Monitor with custom name
+        snyk container monitor ${{ inputs.image-name }} --app-vulns=$IMAGE_NAME
         
         echo "✅ Snyk container scan completed"
       shell: bash
