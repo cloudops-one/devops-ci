@@ -5,24 +5,20 @@ inputs:
   image-name:
     description: 'The name and tag of the Docker image to scan'
     required: true
-  harbor-registry:
-    description: 'Harbor registry URL'
-    required: true
-  harbor-username:
-    description: 'Harbor registry username'
-    required: true
-  harbor-password:
-    description: 'Harbor registry password'
-    required: true
 
 runs:
   using: 'composite'
   steps:
-    - name: Run Trivy Container Scan
+    - name: Docker Login
       run: |
-        docker login ${{ inputs.harbor-registry }} \
-          --username ${{ inputs.harbor-username }} \
-          --password ${{ inputs.harbor-password }}
-        
-        trivy image --severity=HIGH,CRITICAL ${{ inputs.image-name }}
+        echo "${{ secrets.HARBOR_PASSWORD }}" | docker login ${{ secrets.HARBOR_REGISTRY }} \
+          --username ${{ secrets.HARBOR_USERNAME }} \
+          --password-stdin
       shell: bash
+
+    - name: Run Trivy Scan
+      uses: aquasecurity/trivy-action@0.24.0
+      with:
+        image-ref: ${{ inputs.image-name }}
+        format: 'table'
+        severity: 'HIGH,CRITICAL'
