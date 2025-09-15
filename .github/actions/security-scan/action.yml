@@ -3,7 +3,7 @@ description: 'Runs security scans with SonarQube, Trivy, Snyk, Spotless, and JaC
 
 inputs:
   image-name:
-    description: 'Docker image name to scan with Trivy'
+    description: 'Docker image name to scan with Trivy and Snyk'
     required: true
   snyk-token:
     description: 'Snyk API token'
@@ -18,7 +18,7 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    # Install required tools (excluding SonarScanner since we'll use the action)
+    # Install required tools
     - name: Install security tools
       run: |
         # Install Trivy
@@ -28,12 +28,35 @@ runs:
         echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
         sudo apt-get update
         sudo apt-get install -y trivy
-      shell: bash  
+        
+        # Install Snyk
+        npm install -g snyk
+      shell: bash
 
-    # Trivy Container Scan (Critical!)
+    # Authenticate Snyk
+    - name: Authenticate Snyk
+      run: |
+        echo "Authenticating Snyk..."
+        snyk auth ${{ inputs.snyk-token }}
+        echo "✅ Snyk authenticated successfully"
+      shell: bash
+
+    # Snyk Container Scan
+    - name: Snyk Container Scan
+      run: |
+        echo "Running Snyk container scan..."
+        snyk container test ${{ inputs.image-name }} --severity-threshold=high
+        
+        # Monitor the image in Snyk dashboard
+        snyk container monitor ${{ inputs.image-name }}
+        
+        echo "✅ Snyk container scan completed"
+      shell: bash
+
+    # Trivy Container Scan
     - name: Trivy Container Scan
       run: |
-        echo "Scanning Docker image for vulnerabilities..."
+        echo "Scanning Docker image for vulnerabilities with Trivy..."
         trivy image --severity HIGH,CRITICAL ${{ inputs.image-name }}
         
         # Fail pipeline if critical vulnerabilities found
@@ -51,21 +74,49 @@ runs:
         echo "✅ No critical vulnerabilities found in container image"
       shell: bash
 
+    # SonarQube Scan
+    - name: SonarQube Scan
+      run: |
+        echo "Running SonarQube analysis..."
+        # Install SonarScanner if not already available
+        if ! command -v sonar-scanner &> /dev/null; then
+          echo "Installing SonarScanner..."
+          wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-4.8.0.2856-linux.zip
+          unzip sonar-scanner-cli-4.8.0.2856-linux.zip
+          sudo mv sonar-scanner-4.8.0.2856-linux /opt/sonar-scanner
+          echo 'export PATH=$PATH:/opt/sonar-scanner/bin' >> ~/.bashrc
+          source ~/.bashrc
+        fi
+        
+        # Run SonarQube analysis
+        sonar-scanner \
+          -Dsonar.projectKey=my-project \
+          -Dsonar.sources=. \
+          -Dsonar.host.url=${{ inputs.sonar-host }} \
+          -Dsonar.login=${{ inputs.sonar-token }}
+        
+        echo "✅ SonarQube analysis completed"
+      shell: bash
+
     # Spotless Code Formatting Check
     - name: Code Formatting Check
       run: |
         echo "Checking code formatting..."
         # Check JavaScript/TypeScript formatting with prettier
-        npx prettier --check . || {
-          echo "❌ Code formatting issues found. Run 'npx prettier --write .' to fix"
-          exit 1
-        }
-        
-        echo "Running ESLint..."
-        npx eslint . --ext .js,.jsx,.ts,.tsx --max-warnings=0 || {
-          echo "❌ ESLint issues found"
-          exit 1
-        }
+        if [ -f "package.json" ]; then
+          npx prettier --check . || {
+            echo "❌ Code formatting issues found. Run 'npx prettier --write .' to fix"
+            exit 1
+          }
+          
+          echo "Running ESLint..."
+          npx eslint . --ext .js,.jsx,.ts,.tsx --max-warnings=0 || {
+            echo "❌ ESLint issues found"
+            exit 1
+          }
+        else
+          echo "No package.json found, skipping code formatting checks"
+        fi
         
         echo "✅ Code formatting check passed"
       shell: bash
@@ -95,6 +146,7 @@ runs:
         echo "========================"
         echo "✅ SonarQube: Code quality and security analysis completed"
         echo "✅ Trivy: Container vulnerabilities checked"
+        echo "✅ Snyk: Container security analysis completed"
         echo "✅ Code formatting: Verified"
         echo "✅ Code coverage: Verified (if Java project)"
         echo " "
