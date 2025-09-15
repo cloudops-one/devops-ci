@@ -4,20 +4,25 @@ description: 'Installs security scanning tools (Trivy, Snyk)'
 runs:
   using: 'composite'
   steps:
-    - name: Install security tools
+    - name: Install system dependencies
       run: |
-        # Install Trivy
         sudo apt-get update
-        sudo apt-get install -y wget apt-transport-https gnupg lsb-release
-        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-        echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
-        sudo apt-get update
-        sudo apt-get install -y trivy
+        sudo apt-get install -y wget apt-transport-https gnupg lsb-release curl
+      shell: bash
 
-        # Install Snyk
-        curl -sL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-        sudo apt-get install -y nodejs
-        sudo npm install -g snyk
-        
-        echo "✅ Security tools installed successfully"
+    - name: Install Trivy
+      run: |
+        # Download and install Trivy directly (more reliable than apt)
+        wget -qO - https://github.com/aquasecurity/trivy/releases/download/v0.49.1/trivy_0.49.1_Linux-64bit.deb
+        sudo dpkg -i trivy_0.49.1_Linux-64bit.deb || sudo apt-get install -f -y
+        trivy --version
+        echo "✅ Trivy installed successfully"
+      shell: bash
+
+    - name: Install Snyk
+      run: |
+        # Install Snyk via npm (already available in GitHub runners)
+        npm install -g snyk
+        snyk --version
+        echo "✅ Snyk installed successfully"
       shell: bash
