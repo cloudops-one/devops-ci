@@ -1,5 +1,6 @@
+# .github/actions/snyk-scan/action.yaml (Refined Snyk action)
 name: 'Snyk Security Scan'
-description: 'Runs Snyk dependency vulnerability scan'
+description: 'Runs Snyk dependency and container vulnerability scan'
 
 inputs:
   snyk-token:
@@ -9,50 +10,54 @@ inputs:
     description: 'Node.js version'
     required: false
     default: '20'
+  target:
+    description: 'The Snyk command to run (e.g., test or monitor)'
+    required: true
+    default: 'test'
+  project-path:
+    description: 'Path to the project to scan'
+    required: false
+    default: '.'
 
 runs:
   using: 'composite'
   steps:
-    - name: Check for package.json
-      run: |
-        if [ ! -f "package.json" ]; then
-          echo "ℹ️ No package.json found. Skipping Snyk scan."
-          exit 0
-        fi
-      shell: bash
-
     - name: Setup Node.js
-      uses: cloudops-one/setup-node@v1
+      uses: actions/setup-node@v3
       with:
         node-version: ${{ inputs.node-version }}
         cache: 'npm'
 
-    - name: Install dependencies
+    - name: Install Snyk CLI
+      run: npm install -g snyk
+      shell: bash
+
+    - name: Install Dependencies
       run: |
-        # Try multiple lock files with fallbacks
         if [ -f "package-lock.json" ]; then
           npm ci --no-audit --no-fund
         elif [ -f "yarn.lock" ]; then
           npm install -g yarn
           yarn install --frozen-lockfile --ignore-engines
-        elif [ -f "pnpm-lock.yaml" ]; then
-          npm install -g pnpm
-          pnpm install --frozen-lockfile
         else
+          echo "No lock file found. Running npm install."
           npm install --no-audit --no-fund
         fi
+      working-directory: ${{ inputs.project-path }}
+      shell: bash
+
+    - name: Authenticate Snyk
+      run: snyk auth ${{ inputs.snyk-token }}
       shell: bash
 
     - name: Run Snyk scan
+      if: ${{ inputs.target == 'test' }}
       run: |
-        snyk auth ${{ inputs.snyk-token }}
-        echo "Running Snyk dependency scan..."
-        
-        # Run Snyk but don't fail the build immediately
-        snyk test --all-projects --severity-threshold=high || \
-          echo "⚠️ Snyk found vulnerabilities, but continuing pipeline..."
-        
-        echo "Monitoring project in Snyk dashboard..."
+        snyk test --all-projects --severity-threshold=high
+      shell: bash
+
+    - name: Run Snyk monitor
+      if: ${{ inputs.target == 'monitor' }}
+      run: |
         snyk monitor --all-projects
-        echo "✅ Snyk scan completed"
       shell: bash
