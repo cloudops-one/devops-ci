@@ -12,6 +12,14 @@ inputs:
     description: 'Severity threshold for failing the scan'
     required: false
     default: 'high'
+  registry-username:
+    description: 'Registry username'
+    required: false
+    default: ''
+  registry-password:
+    description: 'Registry password'
+    required: false
+    default: ''
 
 runs:
   using: 'composite'
@@ -25,6 +33,13 @@ runs:
       run: |
         snyk auth ${{ inputs.snyk-token }}
         echo "✅ Snyk authenticated successfully"
+      shell: bash
+
+    - name: Login to container registry (if credentials provided)
+      if: inputs.registry-username != '' && inputs.registry-password != ''
+      run: |
+        echo "${{ inputs.registry-password }}" | docker login ${{ inputs.image-name }} --username ${{ inputs.registry-username }} --password-stdin
+        echo "✅ Logged into container registry"
       shell: bash
 
     - name: Run Snyk Container Scan
@@ -44,4 +59,10 @@ runs:
         
         echo "✅ Snyk container scan completed"
       shell: bash
-      
+
+    - name: Logout from container registry
+      if: inputs.registry-username != '' && inputs.registry-password != ''
+      run: |
+        docker logout
+        echo "✅ Logged out from container registry"
+      shell: bash
