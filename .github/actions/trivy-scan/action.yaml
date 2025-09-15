@@ -22,3 +22,4 @@ runs:
         image-ref: ${{ inputs.image-name }}
         format: 'table'
         severity: 'HIGH,CRITICAL'
+        exit-code: '1'   # ❌ Fail if HIGH/CRITICAL issues are found
