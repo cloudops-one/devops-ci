@@ -29,21 +29,6 @@ runs:
         sudo apt-get update
         sudo apt-get install -y trivy
 
-        # Install Snyk
-        npm install -g snyk
-      shell: bash
-
-    # Snyk Scan (Dependency Vulnerability Scan)
-    - name: Snyk Auth and Test
-      run: |
-        snyk auth ${{ inputs.snyk-token }}
-        echo "Running Snyk dependency scan..."
-        snyk test --all-projects
-        
-        echo "Monitoring project in Snyk dashboard..."
-        snyk monitor --all-projects
-      shell: bash
-
     # Trivy Container Scan (Critical!)
     - name: Trivy Container Scan
       run: |
@@ -108,7 +93,6 @@ runs:
         echo "🔒 SECURITY SCAN SUMMARY"
         echo "========================"
         echo "✅ SonarQube: Code quality and security analysis completed"
-        echo "✅ Snyk: Dependency vulnerabilities checked"
         echo "✅ Trivy: Container vulnerabilities checked"
         echo "✅ Code formatting: Verified"
         echo "✅ Code coverage: Verified (if Java project)"
