@@ -5,14 +5,23 @@ inputs:
   image-name:
     description: 'The name and tag of the Docker image to scan'
     required: true
+  harbor-username:
+    description: 'admin'
+    required: true
+  harbor-password:
+    description: 'Horbor@2025'
+    required: true
+  harbor-registry:
+    description: 'harbor.cloudops.terv.pro'
+    required: true
 
 runs:
   using: 'composite'
   steps:
     - name: Docker Login
       run: |
-        echo "${{ secrets.HARBOR_PASSWORD }}" | docker login ${{ secrets.HARBOR_REGISTRY }} \
-          --username ${{ secrets.HARBOR_USERNAME }} \
+        echo "${{ inputs.harbor-password }}" | docker login ${{ inputs.harbor-registry }} \
+          --username ${{ inputs.harbor-username }} \
           --password-stdin
       shell: bash
 
@@ -22,4 +31,4 @@ runs:
         image-ref: ${{ inputs.image-name }}
         format: 'table'
         severity: 'HIGH,CRITICAL'
-        exit-code: '1'   # ❌ Fail if HIGH/CRITICAL issues are found
+        exit-code: '1'   # Fail pipeline if HIGH/CRITICAL vulnerabilities found
