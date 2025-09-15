@@ -1,12 +1,9 @@
 name: 'Security Scan'
-description: 'Runs security scans with SonarQube, Trivy, Snyk, Spotless, and JaCoCo'
+description: 'Runs security scans with SonarQube, Trivy, Spotless, and JaCoCo'
 
 inputs:
   image-name:
-    description: 'Docker image name to scan with Trivy and Snyk'
-    required: true
-  snyk-token:
-    description: 'Snyk API token'
+    description: 'Docker image name to scan with Trivy'
     required: true
   sonar-token:
     description: 'SonarQube token'
@@ -18,10 +15,10 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    # Install required tools
+    # Install required tools (Snyk removed)
     - name: Install security tools
       run: |
-        # Install Trivy
+        # Install Trivy only
         sudo apt-get update
         sudo apt-get install -y wget apt-transport-https gnupg lsb-release
         wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
@@ -29,34 +26,8 @@ runs:
         sudo apt-get update
         sudo apt-get install -y trivy
         
-        # Install Snyk
-        npm install -g snyk
-      shell: bash
-
-    # Authenticate Snyk
-    - name: Authenticate Snyk
-      run: |
-        echo "Authenticating Snyk..."
-        snyk auth ${{ inputs.snyk-token }}
-        echo "✅ Snyk authenticated successfully"
-      shell: bash
-
-    # Snyk Container Scan - UPDATED WITH DISPLAY NAME
-    - name: Snyk Container Scan
-      run: |
-        echo "Running Snyk container scan..."
-        
-        # Extract just the image name without registry
-        IMAGE_NAME=$(echo "${{ inputs.image-name }}" | cut -d'/' -f2- | cut -d':' -f1)
-        echo "Using display name: $IMAGE_NAME"
-        
-        # Scan with custom display name
-        snyk container test ${{ inputs.image-name }} --severity-threshold=high --app-vulns=$IMAGE_NAME
-        
-        # Monitor with custom name
-        snyk container monitor ${{ inputs.image-name }} --app-vulns=$IMAGE_NAME
-        
-        echo "✅ Snyk container scan completed"
+        # Install code quality tools
+        npm install -g prettier eslint
       shell: bash
 
     # Trivy Container Scan
@@ -144,7 +115,7 @@ runs:
         fi
       shell: bash
 
-    # Final security status check
+    # Final security status check (updated to reflect Snyk removal)
     - name: Security Scan Summary
       run: |
         echo " "
@@ -152,9 +123,10 @@ runs:
         echo "========================"
         echo "✅ SonarQube: Code quality and security analysis completed"
         echo "✅ Trivy: Container vulnerabilities checked"
-        echo "✅ Snyk: Container security analysis completed"
         echo "✅ Code formatting: Verified"
         echo "✅ Code coverage: Verified (if Java project)"
         echo " "
-        echo "All security checks passed! 🎉"
+        echo "Note: Snyk scan runs as a separate job in the pipeline"
+        echo " "
+        echo "Security checks completed! 🎉"
       shell: bash
