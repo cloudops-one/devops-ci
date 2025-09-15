@@ -1,36 +1,24 @@
+# .github/actions/trivy-scan/action.yaml
+
 name: 'Trivy Container Scan'
-description: 'Runs Trivy container vulnerability scan and fails on HIGH,CRITICAL vulnerabilities.'
+description: 'Scans a Docker image for vulnerabilities using Trivy.'
 
 inputs:
   image-name:
-    description: 'Docker image name to scan with Trivy'
+    description: 'The name and tag of the Docker image to scan'
     required: true
-  severity-level:
-    description: 'Comma-separated list of severities to fail the build on.'
-    required: false
-    default: 'CRITICAL,HIGH'
+  harbor-username:
+    description: 'Harbor registry username'
+    required: true
+  harbor-password:
+    description: 'Harbor registry password'
+    required: true
 
 runs:
   using: 'composite'
   steps:
-    - name: Scan image with Trivy
-      shell: bash
+    - name: Run Trivy Container Scan
       run: |
-        echo "🔍 Scanning Docker image: ${{ inputs.image-name }}"
-        echo "🔎 Severity threshold: ${{ inputs.severity-level }}"
-        
-        # Run Trivy with specified severity level and exit code 1 to fail on vulnerabilities
-        trivy image \
-          --format table \
-          --severity ${{ inputs.severity-level }} \
-          --exit-code 1 \
-          --quiet \
-          "${{ inputs.image-name }}"
-
-        echo "✅ No ${{ inputs.severity-level }} vulnerabilities found!"
-      env:
-        # Essential for scanning images from private registries like Harbor
-        TRIVY_USERNAME: ${{ secrets.HARBOR_USERNAME }}
-        TRIVY_PASSWORD: ${{ secrets.HARBOR_PASSWORD }}
-        TRIVY_NON_SSL: false
-        TRIVY_INSECURE: false
+        docker login ${{ secrets.HARBOR_REGISTRY }} --username ${{ inputs.harbor-username }} --password ${{ inputs.harbor-password }}
+        trivy image --severity=HIGH,CRITICAL ${{ inputs.image-name }}
+      shell: bash
