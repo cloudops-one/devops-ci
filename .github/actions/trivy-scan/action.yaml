@@ -9,22 +9,34 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Verify Trivy installation
+      run: |
+        if ! command -v trivy &> /dev/null; then
+          echo "❌ Trivy not found. Installing..."
+          wget -qO - https://github.com/aquasecurity/trivy/releases/download/v0.49.1/trivy_0.49.1_Linux-64bit.deb
+          sudo dpkg -i trivy_0.49.1_Linux-64bit.deb || sudo apt-get install -f -y
+        fi
+        trivy --version
+      shell: bash
+
     - name: Trivy Container Scan
       run: |
-        echo "Scanning Docker image for vulnerabilities..."
-        trivy image --severity HIGH,CRITICAL ${{ inputs.image-name }}
+        echo "Scanning Docker image: ${{ inputs.image-name }}"
         
-        # Fail pipeline if critical vulnerabilities found
-        if trivy image --severity CRITICAL ${{ inputs.image-name }} | grep -q "CRITICAL"; then
-          echo "❌ CRITICAL vulnerabilities found in container image!"
+        # Run scan and capture output
+        scan_output=$(trivy image --severity HIGH,CRITICAL --exit-code 0 --format table ${{ inputs.image-name }} 2>&1)
+        echo "$scan_output"
+        
+        # Check for critical vulnerabilities specifically
+        if echo "$scan_output" | grep -q "CRITICAL"; then
+          echo "❌ CRITICAL vulnerabilities found!"
           exit 1
         fi
         
-        # Also fail on high severity vulnerabilities
-        if trivy image --severity HIGH ${{ inputs.image-name }} | grep -q "HIGH"; then
-          echo "❌ HIGH severity vulnerabilities found in container image!"
+        if echo "$scan_output" | grep -q "HIGH"; then
+          echo "❌ HIGH severity vulnerabilities found!"
           exit 1
         fi
         
-        echo "✅ No critical vulnerabilities found in container image"
+        echo "✅ No critical vulnerabilities found"
       shell: bash
