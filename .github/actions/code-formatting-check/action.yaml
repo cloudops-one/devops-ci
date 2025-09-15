@@ -19,7 +19,7 @@ runs:
       shell: bash
 
     - name: Setup Node.js
-      uses: actions/setup-node@v3
+      uses: cloudops-one/setup-node@v1
       with:
         node-version: ${{ inputs.node-version }}
         cache: 'npm'
