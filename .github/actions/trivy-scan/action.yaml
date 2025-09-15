@@ -1,11 +1,12 @@
-# .github/actions/trivy-scan/action.yaml
-
 name: 'Trivy Container Scan'
 description: 'Scans a Docker image for vulnerabilities using Trivy.'
 
 inputs:
   image-name:
     description: 'The name and tag of the Docker image to scan'
+    required: true
+  harbor-registry:
+    description: 'Harbor registry URL'
     required: true
   harbor-username:
     description: 'Harbor registry username'
@@ -19,6 +20,9 @@ runs:
   steps:
     - name: Run Trivy Container Scan
       run: |
-        docker login ${{ secrets.HARBOR_REGISTRY }} --username ${{ inputs.harbor-username }} --password ${{ inputs.harbor-password }}
+        docker login ${{ inputs.harbor-registry }} \
+          --username ${{ inputs.harbor-username }} \
+          --password ${{ inputs.harbor-password }}
+        
         trivy image --severity=HIGH,CRITICAL ${{ inputs.image-name }}
       shell: bash
