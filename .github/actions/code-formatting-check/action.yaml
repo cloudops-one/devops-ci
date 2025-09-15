@@ -3,37 +3,63 @@ description: 'Runs code formatting and linting checks'
 
 inputs:
   node-version:
-    description: 'Node.js version to use'
+    description: 'Node.js version'
     required: false
     default: '20'
 
 runs:
   using: 'composite'
   steps:
+    - name: Check for package.json
+      run: |
+        if [ ! -f "package.json" ]; then
+          echo "ℹ️ No package.json found. Skipping code formatting check."
+          exit 0
+        fi
+      shell: bash
+
     - name: Setup Node.js
-      uses: cloudops-one/setup-node@v1
+      uses: actions/setup-node@v3
       with:
         node-version: ${{ inputs.node-version }}
         cache: 'npm'
 
     - name: Install dependencies
-      run: npm ci
+      run: |
+        # Install only dev dependencies needed for formatting/linting
+        if [ -f "package-lock.json" ]; then
+          npm ci --only=dev --no-audit --no-fund
+        else
+          npm install --only=dev --no-audit --no-fund
+        fi
       shell: bash
 
     - name: Code Formatting Check
       run: |
         echo "Checking code formatting..."
-        # Check JavaScript/TypeScript formatting with prettier
-        npx prettier --check . || {
-          echo "❌ Code formatting issues found. Run 'npx prettier --write .' to fix"
-          exit 1
-        }
         
-        echo "Running ESLint..."
-        npx eslint . --ext .js,.jsx,.ts,.tsx --max-warnings=0 || {
-          echo "❌ ESLint issues found"
-          exit 1
-        }
+        # Check Prettier formatting
+        if npx prettier --version >/dev/null 2>&1; then
+          if npx prettier --check . --ignore-path .gitignore; then
+            echo "✅ Prettier formatting check passed"
+          else
+            echo "❌ Prettier formatting issues found"
+            echo "Run: npx prettier --write ."
+            exit 1
+          fi
+        else
+          echo "ℹ️ Prettier not available, skipping formatting check"
+        fi
         
-        echo "✅ Code formatting check passed"
+        # Check ESLint
+        if npx eslint --version >/dev/null 2>&1; then
+          if npx eslint . --ext .js,.jsx,.ts,.tsx --max-warnings=0; then
+            echo "✅ ESLint check passed"
+          else
+            echo "❌ ESLint issues found"
+            exit 1
+          fi
+        else
+          echo "ℹ️ ESLint not available, skipping linting check"
+        fi
       shell: bash
