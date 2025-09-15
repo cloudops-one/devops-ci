@@ -28,6 +28,7 @@ runs:
         echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
         sudo apt-get update
         sudo apt-get install -y trivy
+      shell: bash  
 
     # Trivy Container Scan (Critical!)
     - name: Trivy Container Scan
