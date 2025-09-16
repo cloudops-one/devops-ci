@@ -1,0 +1,62 @@
+name: 'Docker Push'
+description: 'Push Docker image to registry with validation'
+inputs:
+  registry:
+    description: 'Docker registry URL'
+    required: true
+  username:
+    description: 'Registry username'
+    required: true
+  password:
+    description: 'Registry password'
+    required: true
+  repository:
+    description: 'Docker repository name (e.g., portal-irai-yoga/admin)'
+    required: true
+  tag:
+    description: 'Docker image tag'
+    required: true
+  logout:
+    description: 'Whether to logout after push'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Login to Docker Registry
+      shell: bash
+      run: |
+        echo "${{ inputs.password }}" | docker login ${{ inputs.registry }} --username ${{ inputs.username }} --password-stdin
+
+    - name: Validate Docker tag format
+      shell: bash
+      run: |
+        IMAGE_TAG="${{ inputs.registry }}/${{ inputs.repository }}:${{ inputs.tag }}"
+        
+        # Basic validation
+        if [ -z "${{ inputs.tag }}" ]; then
+          echo "❌ Docker tag is empty"
+          exit 1
+        fi
+        
+        if [[ ! "${{ inputs.tag }}" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$ ]]; then
+          echo "❌ Invalid Docker tag format: ${{ inputs.tag }}"
+          echo "Docker tags must start with alphanumeric and contain only [a-zA-Z0-9_.-] (max 128 chars)"
+          exit 1
+        fi
+        
+        echo "✅ Docker tag is valid: ${{ inputs.tag }}"
+        echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+    - name: Push Docker image
+      shell: bash
+      run: |
+        echo "Pushing image: $IMAGE_TAG"
+        docker push "$IMAGE_TAG"
+
+    - name: Logout from Docker Registry
+      if: inputs.logout == 'true'
+      shell: bash
+      run: |
+        docker logout ${{ inputs.registry }}
