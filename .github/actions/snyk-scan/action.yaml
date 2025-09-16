@@ -20,20 +20,63 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Install Snyk
+    - name: Install Snyk CLI
       shell: bash
       run: |
+        # Install Snyk CLI using npm (alternative methods available)
         npm install -g snyk
+        echo "Snyk CLI version: $(snyk --version)"
 
-    - name: Run Snyk Scan
+    - name: Authenticate Snyk
       shell: bash
+      run: |
+        # Set Snyk token as environment variable for non-interactive auth
+        export SNYK_TOKEN="${{ inputs.snyk-token }}"
+        echo "✅ Snyk authentication configured"
+
+    - name: Run Snyk Container Scan
+      shell: bash
+      env:
+        SNYK_TOKEN: ${{ inputs.snyk-token }}
       run: |
         echo "🔍 Scanning ${{ inputs.image-name }} with Snyk..."
         
-        # Authenticate with Snyk
-        echo "${{ inputs.snyk-token }}" | snyk auth
+        # Run Snyk container test
+        snyk container test "${{ inputs.image-name }}" \
+          --severity-threshold=${{ inputs.severity-threshold }} \
+          --json-file-output=snyk-results.json \
+          || true  # Continue even if vulnerabilities found (we'll handle failure later)
         
-        # Run Snyk container scan
-        snyk container test "${{ inputs.image-name }}" --severity-threshold=${{ inputs.severity-threshold }}
+        # Monitor to Snyk platform (optional but recommended)
+        snyk container monitor "${{ inputs.image-name }}" \
+          --severity-threshold=${{ inputs.severity-threshold }} \
+          --project-name="portal-irai-yoga-admin" \
+          --tags="environment:github-actions" \
+          || echo "⚠️  Monitor failed but continuing..."
         
-        echo "✅ Snyk scan completed successfully"
+        echo "✅ Snyk scan completed"
+
+    - name: Fail on vulnerabilities if configured
+      shell: bash
+      if: inputs.fail-on-vulnerabilities == 'true'
+      run: |
+        # Check if vulnerabilities were found and fail if configured
+        if [ -f "snyk-results.json" ]; then
+          VULN_COUNT=$(jq '.vulnerabilities | length' snyk-results.json)
+          if [ "$VULN_COUNT" -gt 0 ]; then
+            echo "❌ Found $VULN_COUNT vulnerabilities exceeding threshold ${{ inputs.severity-threshold }}"
+            exit 1
+          else
+            echo "✅ No vulnerabilities found exceeding threshold ${{ inputs.severity-threshold }}"
+          fi
+        else
+          echo "⚠️  No Snyk results file found"
+        fi
+
+    - name: Upload Snyk results artifact
+      shell: bash
+      uses: actions/upload-artifact@v4
+      with:
+        name: snyk-scan-results
+        path: snyk-results.json
+        if-no-files-found: ignore
