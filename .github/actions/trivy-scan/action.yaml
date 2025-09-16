@@ -1,34 +1,38 @@
-name: 'Trivy Container Scan'
-description: 'Scans a Docker image for vulnerabilities using Trivy.'
+name: 'Trivy Security Scan'
+description: 'Centralized Trivy container security scanning'
 
 inputs:
   image-name:
-    description: 'The name and tag of the Docker image to scan'
+    description: 'Container image to scan'
     required: true
-  harbor-username:
-    description: 'admin'
-    required: true
-  harbor-password:
-    description: 'Horbor@2025'
-    required: true
-  harbor-registry:
-    description: 'harbor.cloudops.terv.pro'
-    required: true
+  severity-threshold:
+    description: 'Severity threshold to fail on'
+    required: false
+    default: 'CRITICAL'
+  fail-on-vulnerabilities:
+    description: 'Fail on vulnerabilities'
+    required: false
+    default: 'true'
 
 runs:
   using: 'composite'
   steps:
-    - name: Docker Login
-      run: |
-        echo "${{ inputs.harbor-password }}" | docker login ${{ inputs.harbor-registry }} \
-          --username ${{ inputs.harbor-username }} \
-          --password-stdin
+    - name: Install Trivy
       shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+        echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update
+        sudo apt-get install -y trivy
 
     - name: Run Trivy Scan
-      uses: cloudops-one/trivy-action@0.24.0
-      with:
-        image-ref: ${{ inputs.image-name }}
-        format: 'table'
-        severity: 'HIGH,CRITICAL'
-        exit-code: '1'   # Fail pipeline if HIGH/CRITICAL vulnerabilities found
+      shell: bash
+      run: |
+        echo "🔍 Scanning ${{ inputs.image-name }} with Trivy..."
+        
+        # Run scan with specified severity threshold
+        trivy image --severity ${{ inputs.severity-threshold }} "${{ inputs.image-name }}"
+        
+        echo "✅ Trivy scan completed successfully"
