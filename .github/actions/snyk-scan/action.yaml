@@ -1,68 +1,39 @@
-name: 'Snyk Container Scan'
-description: 'Runs Snyk container security scanning'
+name: 'Snyk Security Scan'
+description: 'Centralized Snyk container security scanning'
 
 inputs:
   image-name:
-    description: 'Full Docker image name with tag to scan'
+    description: 'Container image to scan'
     required: true
   snyk-token:
-    description: 'Snyk API token'
+    description: 'Snyk authentication token'
     required: true
   severity-threshold:
-    description: 'Severity threshold for failing the scan'
+    description: 'Severity threshold to fail on'
     required: false
     default: 'high'
-  registry-username:
-    description: 'Registry username'
+  fail-on-vulnerabilities:
+    description: 'Fail on vulnerabilities'
     required: false
-    default: ''
-  registry-password:
-    description: 'Registry password'
-    required: false
-    default: ''
+    default: 'true'
 
 runs:
   using: 'composite'
   steps:
-    - name: Install Snyk CLI
+    - name: Install Snyk
+      shell: bash
       run: |
         npm install -g snyk
-      shell: bash
 
-    - name: Authenticate Snyk
-      run: |
-        snyk auth ${{ inputs.snyk-token }}
-        echo "✅ Snyk authenticated successfully"
+    - name: Run Snyk Scan
       shell: bash
-
-    - name: Login to container registry (if credentials provided)
-      if: inputs.registry-username != '' && inputs.registry-password != ''
       run: |
-        echo "${{ inputs.registry-password }}" | docker login ${{ inputs.image-name }} --username ${{ inputs.registry-username }} --password-stdin
-        echo "✅ Logged into container registry"
-      shell: bash
-
-    - name: Run Snyk Container Scan
-      run: |
-        echo "Running Snyk container scan on: ${{ inputs.image-name }}"
+        echo "🔍 Scanning ${{ inputs.image-name }} with Snyk..."
         
-        # Extract just the image name without registry for display
-        IMAGE_NAME=$(echo "${{ inputs.image-name }}" | cut -d'/' -f2- | cut -d':' -f1)
-        echo "Using display name: $IMAGE_NAME"
+        # Authenticate with Snyk
+        echo "${{ inputs.snyk-token }}" | snyk auth
         
-        # Test the container for vulnerabilities
-        snyk container test "${{ inputs.image-name }}" \
-          --severity-threshold=${{ inputs.severity-threshold }}
+        # Run Snyk container scan
+        snyk container test "${{ inputs.image-name }}" --severity-threshold=${{ inputs.severity-threshold }}
         
-        # Monitor the container (send results to Snyk platform)
-        snyk container monitor "${{ inputs.image-name }}"
-        
-        echo "✅ Snyk container scan completed"
-      shell: bash
-
-    - name: Logout from container registry
-      if: inputs.registry-username != '' && inputs.registry-password != ''
-      run: |
-        docker logout
-        echo "✅ Logged out from container registry"
-      shell: bash
+        echo "✅ Snyk scan completed successfully"
