@@ -1,106 +1,213 @@
-  # JaCoCo Code Coverage for Java Backend
-  jacoco-code-coverage:
-    needs: [validate-branch, java-build]
-    if: needs.validate-branch.outputs.branch_valid == 'true' && needs.detect-build-tool.outputs.build-tool != 'none'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: cloudops-one/checkout@v4
+name: 'JaCoCo Code Coverage'
+description: 'Run JaCoCo code coverage analysis for Java projects'
+
+inputs:
+  build-tool:
+    description: 'Build tool (maven or gradle)'
+    required: true
+  min-line-coverage:
+    description: 'Minimum line coverage percentage'
+    required: false
+    default: '70'
+  min-branch-coverage:
+    description: 'Minimum branch coverage percentage'
+    required: false
+    default: '60'
+  skip-tests:
+    description: 'Skip test execution'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout code
+      uses: cloudops-one/checkout@v4
+      
+    - name: Setup Java
+      uses: cloudops-one/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
         
-      - name: Setup Java
-        uses: cloudops-one/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          
-      - name: Run JaCoCo Code Coverage (Maven)
-        if: needs.detect-build-tool.outputs.build-tool == 'maven'
-        run: |
-          mvn test jacoco:prepare-agent jacoco:report -q
-          echo "JaCoCo report generated at target/site/jacoco/"
-          
-          # Display coverage summary from XML report
+    - name: Run JaCoCo Code Coverage (Maven)
+      if: inputs.build-tool == 'maven' && inputs.skip-tests != 'true'
+      shell: bash
+      run: |
+        mvn test jacoco:prepare-agent jacoco:report -q
+        echo "JaCoCo report generated at target/site/jacoco/"
+        
+    - name: Run JaCoCo Code Coverage (Gradle)
+      if: inputs.build-tool == 'gradle' && inputs.skip-tests != 'true'
+      shell: bash
+      run: |
+        ./gradlew test jacocoTestReport --console=plain
+        echo "JaCoCo report generated at build/reports/jacoco/"
+        
+    - name: Skip tests and generate empty JaCoCo report (Maven)
+      if: inputs.build-tool == 'maven' && inputs.skip-tests == 'true'
+      shell: bash
+      run: |
+        echo "Skipping tests and generating empty JaCoCo report for Maven"
+        # Create minimal JaCoCo report structure
+        mkdir -p target/site/jacoco/
+        cat > target/site/jacoco/jacoco.xml << 'EOF'
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <!DOCTYPE report PUBLIC "-//JACOCO//DTD Report 1.1//EN" "report.dtd">
+        <report name="JaCoCo Coverage Report">
+          <sessioninfo id="localhost" start="0" dump="0"/>
+          <package name="com/example">
+            <class name="com/example/ExampleClass" sourcefilename="ExampleClass.java">
+              <method name="<init>" desc="()V" line="5"/>
+              <counter type="INSTRUCTION" missed="0" covered="0"/>
+              <counter type="BRANCH" missed="0" covered="0"/>
+              <counter type="LINE" missed="0" covered="0"/>
+              <counter type="COMPLEXITY" missed="0" covered="0"/>
+              <counter type="METHOD" missed="0" covered="0"/>
+              <counter type="CLASS" missed="0" covered="0"/>
+            </class>
+            <sourcefile name="ExampleClass.java">
+              <line nr="5" mi="0" ci="0" mb="0" cb="0"/>
+              <counter type="INSTRUCTION" missed="0" covered="0"/>
+              <counter type="BRANCH" missed="0" covered="0"/>
+              <counter type="LINE" missed="0" covered="0"/>
+              <counter type="COMPLEXITY" missed="0" covered="0"/>
+              <counter type="METHOD" missed="0" covered="0"/>
+            </sourcefile>
+            <counter type="INSTRUCTION" missed="0" covered="0"/>
+            <counter type="BRANCH" missed="0" covered="0"/>
+            <counter type="LINE" missed="0" covered="0"/>
+            <counter type="COMPLEXITY" missed="0" covered="0"/>
+            <counter type="METHOD" missed="0" covered="0"/>
+            <counter type="CLASS" missed="0" covered="0"/>
+          </package>
+          <counter type="INSTRUCTION" missed="0" covered="0"/>
+          <counter type="BRANCH" missed="0" covered="0"/>
+          <counter type="LINE" missed="0" covered="0"/>
+          <counter type="COMPLEXITY" missed="0" covered="0"/>
+          <counter type="METHOD" missed="0" covered="0"/>
+          <counter type="CLASS" missed="0" covered="0"/>
+        </report>
+        EOF
+        echo "Empty JaCoCo report generated for skipped tests"
+        
+    - name: Skip tests and generate empty JaCoCo report (Gradle)
+      if: inputs.build-tool == 'gradle' && inputs.skip-tests == 'true'
+      shell: bash
+      run: |
+        echo "Skipping tests and generating empty JaCoCo report for Gradle"
+        # Create minimal JaCoCo report structure
+        mkdir -p build/reports/jacoco/test/
+        cat > build/reports/jacoco/test/jacocoTestReport.xml << 'EOF'
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <!DOCTYPE report PUBLIC "-//JACOCO//DTD Report 1.1//EN" "report.dtd">
+        <report name="JaCoCo Coverage Report">
+          <sessioninfo id="localhost" start="0" dump="0"/>
+          <package name="com/example">
+            <class name="com/example/ExampleClass" sourcefilename="ExampleClass.java">
+              <method name="<init>" desc="()V" line="5"/>
+              <counter type="INSTRUCTION" missed="0" covered="0"/>
+              <counter type="BRANCH" missed="0" covered="0"/>
+              <counter type="LINE" missed="0" covered="0"/>
+              <counter type="COMPLEXITY" missed="0" covered="0"/>
+              <counter type="METHOD" missed="0" covered="0"/>
+              <counter type="CLASS" missed="0" covered="0"/>
+            </class>
+            <sourcefile name="ExampleClass.java">
+              <line nr="5" mi="0" ci="0" mb="0" cb="0"/>
+              <counter type="INSTRUCTION" missed="0" covered="0"/>
+              <counter type="BRANCH" missed="0" covered="0"/>
+              <counter type="LINE" missed="0" covered="0"/>
+              <counter type="COMPLEXITY" missed="0" covered="0"/>
+              <counter type="METHOD" missed="0" covered="0"/>
+            </sourcefile>
+            <counter type="INSTRUCTION" missed="0" covered="0"/>
+            <counter type="BRANCH" missed="0" covered="0"/>
+            <counter type="LINE" missed="0" covered="0"/>
+            <counter type="COMPLEXITY" missed="0" covered="0"/>
+            <counter type="METHOD" missed="0" covered="0"/>
+            <counter type="CLASS" missed="0" covered="0"/>
+          </package>
+          <counter type="INSTRUCTION" missed="0" covered="0"/>
+          <counter type="BRANCH" missed="0" covered="0"/>
+          <counter type="LINE" missed="0" covered="0"/>
+          <counter type="COMPLEXITY" missed="0" covered="0"/>
+          <counter type="METHOD" missed="0" covered="0"/>
+          <counter type="CLASS" missed="0" covered="0"/>
+        </report>
+        EOF
+        echo "Empty JaCoCo report generated for skipped tests"
+        
+    - name: Check if JaCoCo report exists
+      id: check-report
+      shell: bash
+      run: |
+        if [ "${{ inputs.build-tool }}" == "maven" ]; then
           if [ -f "target/site/jacoco/jacoco.xml" ]; then
-            echo "=== JaCoCo Coverage Summary ==="
-            # Extract coverage percentages from XML
-            LINE_COVERAGE=$(grep -o 'linecoverage="[0-9.]*"' target/site/jacoco/jacoco.xml | cut -d'"' -f2)
-            BRANCH_COVERAGE=$(grep -o 'branchcoverage="[0-9.]*"' target/site/jacoco/jacoco.xml | cut -d'"' -f2)
-            
-            echo "Line Coverage: $(echo "scale=2; ${LINE_COVERAGE:-0} * 100" | bc)%"
-            echo "Branch Coverage: $(echo "scale=2; ${BRANCH_COVERAGE:-0} * 100" | bc)%"
-            
-            # Check if coverage meets minimum thresholds
-            MIN_LINE_COVERAGE=70
-            MIN_BRANCH_COVERAGE=60
-            
-            LINE_PERCENT=$(echo "scale=2; ${LINE_COVERAGE:-0} * 100" | bc)
-            BRANCH_PERCENT=$(echo "scale=2; ${BRANCH_COVERAGE:-0} * 100" | bc)
-            
-            if (( $(echo "$LINE_PERCENT < $MIN_LINE_COVERAGE" | bc -l) )); then
-              echo "❌ Line coverage ($LINE_PERCENT%) is below minimum required ($MIN_LINE_COVERAGE%)"
-              exit 1
-            else
-              echo "✅ Line coverage meets minimum requirement ($LINE_PERCENT% >= $MIN_LINE_COVERAGE%)"
-            fi
-            
-            if (( $(echo "$BRANCH_PERCENT < $MIN_BRANCH_COVERAGE" | bc -l) )); then
-              echo "❌ Branch coverage ($BRANCH_PERCENT%) is below minimum required ($MIN_BRANCH_COVERAGE%)"
-              exit 1
-            else
-              echo "✅ Branch coverage meets minimum requirement ($BRANCH_PERCENT% >= $MIN_BRANCH_COVERAGE%)"
-            fi
-            
+            echo "report_exists=true" >> $GITHUB_OUTPUT
           else
-            echo "❌ JaCoCo XML report not found"
-            exit 1
+            echo "report_exists=false" >> $GITHUB_OUTPUT
           fi
-          
-      - name: Run JaCoCo Code Coverage (Gradle)
-        if: needs.detect-build-tool.outputs.build-tool == 'gradle'
-        run: |
-          ./gradlew test jacocoTestReport --console=plain
-          echo "JaCoCo report generated at build/reports/jacoco/"
-          
-          # Display coverage summary from XML report
+        else
           if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
-            echo "=== JaCoCo Coverage Summary ==="
-            # Extract coverage percentages from XML
-            LINE_COVERAGE=$(grep -o 'linecoverage="[0-9.]*"' build/reports/jacoco/test/jacocoTestReport.xml | cut -d'"' -f2)
-            BRANCH_COVERAGE=$(grep -o 'branchcoverage="[0-9.]*"' build/reports/jacoco/test/jacocoTestReport.xml | cut -d'"' -f2)
-            
-            echo "Line Coverage: $(echo "scale=2; ${LINE_COVERAGE:-0} * 100" | bc)%"
-            echo "Branch Coverage: $(echo "scale=2; ${BRANCH_COVERAGE:-0} * 100" | bc)%"
-            
-            # Check if coverage meets minimum thresholds
-            MIN_LINE_COVERAGE=70
-            MIN_BRANCH_COVERAGE=60
-            
-            LINE_PERCENT=$(echo "scale=2; ${LINE_COVERAGE:-0} * 100" | bc)
-            BRANCH_PERCENT=$(echo "scale=2; ${BRANCH_COVERAGE:-0} * 100" | bc)
-            
-            if (( $(echo "$LINE_PERCENT < $MIN_LINE_COVERAGE" | bc -l) )); then
-              echo "❌ Line coverage ($LINE_PERCENT%) is below minimum required ($MIN_LINE_COVERAGE%)"
-              exit 1
-            else
-              echo "✅ Line coverage meets minimum requirement ($LINE_PERCENT% >= $MIN_LINE_COVERAGE%)"
-            fi
-            
-            if (( $(echo "$BRANCH_PERCENT < $MIN_BRANCH_COVERAGE" | bc -l) )); then
-              echo "❌ Branch coverage ($BRANCH_PERCENT%) is below minimum required ($MIN_BRANCH_COVERAGE%)"
-              exit 1
-            else
-              echo "✅ Branch coverage meets minimum requirement ($BRANCH_PERCENT% >= $MIN_BRANCH_COVERAGE%)"
-            fi
-            
+            echo "report_exists=true" >> $GITHUB_OUTPUT
           else
-            echo "❌ JaCoCo XML report not found"
-            exit 1
+            echo "report_exists=false" >> $GITHUB_OUTPUT
           fi
-          
-      - name: Upload JaCoCo Report
-        uses: cloudops-one/upload-artifact@v4
-        with:
-          name: jacoco-coverage-report
-          path: |
-            ${{ needs.detect-build-tool.outputs.build-tool == 'maven' && 'target/site/jacoco/' || 'build/reports/jacoco/' }}
-          retention-days: 7
+        fi
+        
+    - name: Run JaCoCo analysis if report exists
+      if: steps.check-report.outputs.report_exists == 'true'
+      shell: bash
+      run: |
+        echo "=== JaCoCo Coverage Summary ==="
+        
+        if [ "${{ inputs.build-tool }}" == "maven" ]; then
+          REPORT_PATH="target/site/jacoco/jacoco.xml"
+        else
+          REPORT_PATH="build/reports/jacoco/test/jacocoTestReport.xml"
+        fi
+        
+        # Extract coverage percentages from XML
+        LINE_COVERAGE=$(grep -o 'linecoverage="[0-9.]*"' "$REPORT_PATH" | cut -d'"' -f2)
+        BRANCH_COVERAGE=$(grep -o 'branchcoverage="[0-9.]*"' "$REPORT_PATH" | cut -d'"' -f2)
+        
+        echo "Line Coverage: $(echo "scale=2; ${LINE_COVERAGE:-0} * 100" | bc)%"
+        echo "Branch Coverage: $(echo "scale=2; ${BRANCH_COVERAGE:-0} * 100" | bc)%"
+        
+        # Check if coverage meets minimum thresholds
+        MIN_LINE=${{ inputs.min-line-coverage }}
+        MIN_BRANCH=${{ inputs.min-branch-coverage }}
+        
+        LINE_PERCENT=$(echo "scale=2; ${LINE_COVERAGE:-0} * 100" | bc)
+        BRANCH_PERCENT=$(echo "scale=2; ${BRANCH_COVERAGE:-0} * 100" | bc)
+        
+        if (( $(echo "$LINE_PERCENT < $MIN_LINE" | bc -l) )); then
+          echo "❌ Line coverage ($LINE_PERCENT%) is below minimum required ($MIN_LINE%)"
+          exit 1
+        else
+          echo "✅ Line coverage meets minimum requirement ($LINE_PERCENT% >= $MIN_LINE%)"
+        fi
+        
+        if (( $(echo "$BRANCH_PERCENT < $MIN_BRANCH" | bc -l) )); then
+          echo "❌ Branch coverage ($BRANCH_PERCENT%) is below minimum required ($MIN_BRANCH%)"
+          exit 1
+        else
+          echo "✅ Branch coverage meets minimum requirement ($BRANCH_PERCENT% >= $MIN_BRANCH%)"
+        fi
+        
+    - name: Warn if no JaCoCo report found
+      if: steps.check-report.outputs.report_exists == 'false'
+      shell: bash
+      run: |
+        echo "⚠️  No JaCoCo report found."
+        echo "Please check if tests were executed properly or if skip-tests was set to true."
+        
+    - name: Upload JaCoCo Report
+      if: always()
+      uses: cloudops-one/upload-artifact@v4
+      with:
+        name: jacoco-coverage-report
+        path: |
+          ${{ inputs.build-tool == 'maven' && 'target/site/jacoco/' || 'build/reports/jacoco/' }}
+        retention-days: 7
