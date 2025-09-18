@@ -1,0 +1,186 @@
+name: 'JaCoCo Code Coverage'
+description: 'Run JaCoCo code coverage analysis and report generation'
+author: 'Your Team'
+branding:
+  icon: 'check-square'
+  color: 'green'
+
+inputs:
+  java-version:
+    description: 'Java version to use'
+    required: false
+    default: '17'
+  distribution:
+    description: 'Java distribution'
+    required: false
+    default: 'temurin'
+  build-tool:
+    description: 'Build tool (auto, maven, gradle)'
+    required: false
+    default: 'auto'
+  skip-tests:
+    description: 'Skip running tests'
+    required: false
+    default: 'false'
+  min-coverage-overall:
+    description: 'Minimum overall coverage percentage'
+    required: false
+    default: '70'
+  min-coverage-changed-files:
+    description: 'Minimum coverage for changed files percentage'
+    required: false
+    default: '60'
+  working-directory:
+    description: 'Working directory for the project'
+    required: false
+    default: '.'
+
+outputs:
+  coverage-percentage:
+    description: 'Overall code coverage percentage'
+    value: ${{ steps.coverage-output.outputs.coverage-percentage }}
+  report-generated:
+    description: 'Whether report was generated successfully'
+    value: ${{ steps.coverage-output.outputs.report-generated }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Java
+      uses: actions/setup-java@v3
+      with:
+        java-version: ${{ inputs.java-version }}
+        distribution: ${{ inputs.distribution }}
+      shell: bash
+
+    - name: Detect build tool
+      id: detect-build-tool
+      shell: bash
+      run: |
+        cd ${{ inputs.working-directory }}
+        if [ "${{ inputs.build-tool }}" != "auto" ]; then
+          echo "build-tool=${{ inputs.build-tool }}" >> $GITHUB_OUTPUT
+          echo "Using specified build tool: ${{ inputs.build-tool }}"
+        elif [ -f "pom.xml" ]; then
+          echo "build-tool=maven" >> $GITHUB_OUTPUT
+          echo "Detected Maven project"
+        elif [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
+          echo "build-tool=gradle" >> $GITHUB_OUTPUT
+          echo "Detected Gradle project"
+        else
+          echo "build-tool=none" >> $GITHUB_OUTPUT
+          echo "No build tool detected"
+        fi
+
+    - name: Run tests with JaCoCo (Maven)
+      if: steps.detect-build-tool.outputs.build-tool == 'maven' && inputs.skip-tests == 'false'
+      shell: bash
+      run: |
+        cd ${{ inputs.working-directory }}
+        mvn test jacoco:prepare-agent -q
+
+    - name: Run tests with JaCoCo (Gradle)
+      if: steps.detect-build-tool.outputs.build-tool == 'gradle' && inputs.skip-tests == 'false'
+      shell: bash
+      run: |
+        cd ${{ inputs.working-directory }}
+        ./gradlew test --console=plain
+
+    - name: Generate JaCoCo report (Maven)
+      if: steps.detect-build-tool.outputs.build-tool == 'maven'
+      shell: bash
+      run: |
+        cd ${{ inputs.working-directory }}
+        mvn jacoco:report -q
+        echo "JaCoCo report generated at target/site/jacoco/"
+
+    - name: Generate JaCoCo report (Gradle)
+      if: steps.detect-build-tool.outputs.build-tool == 'gradle'
+      shell: bash
+      run: |
+        cd ${{ inputs.working-directory }}
+        ./gradlew jacocoTestReport --console=plain
+        echo "JaCoCo report generated at build/reports/jacoco/"
+
+    - name: Upload JaCoCo report artifact
+      if: steps.detect-build-tool.outputs.build-tool != 'none'
+      uses: actions/upload-artifact@v3
+      with:
+        name: jacoco-coverage-report
+        path: |
+          ${{ inputs.working-directory }}/target/site/jacoco/
+          ${{ inputs.working-directory }}/build/reports/jacoco/
+        retention-days: 7
+
+    - name: Extract coverage percentage and publish report
+      id: coverage-output
+      shell: bash
+      run: |
+        cd ${{ inputs.working-directory }}
+        
+        if [ "${{ steps.detect-build-tool.outputs.build-tool }}" == "maven" ]; then
+          if [ -f "target/site/jacoco/jacoco.xml" ]; then
+            echo "report-generated=true" >> $GITHUB_OUTPUT
+            
+            # Extract coverage percentage from XML (simplified approach)
+            COVERAGE=$(grep -o 'lineRate="[0-9.]*"' target/site/jacoco/jacoco.xml | head -1 | cut -d'"' -f2)
+            if [ -n "$COVERAGE" ]; then
+              PERCENTAGE=$(echo "scale=2; $COVERAGE * 100" | bc)
+              echo "coverage-percentage=$PERCENTAGE" >> $GITHUB_OUTPUT
+              echo "Coverage percentage: $PERCENTAGE%"
+            fi
+            
+            # Publish to PR using madrapps action
+            echo "::group::Publishing JaCoCo coverage report"
+            npx madrapps/jacoco-report@v1.6.1 \
+              --paths "target/site/jacoco/jacoco.xml" \
+              --token "${{ secrets.GITHUB_TOKEN }}" \
+              --min-coverage-overall "${{ inputs.min-coverage-overall }}" \
+              --min-coverage-changed-files "${{ inputs.min-coverage-changed-files }}"
+            echo "::endgroup::"
+          else
+            echo "report-generated=false" >> $GITHUB_OUTPUT
+            echo "coverage-percentage=0" >> $GITHUB_OUTPUT
+            echo "JaCoCo report not found"
+          fi
+          
+        elif [ "${{ steps.detect-build-tool.outputs.build-tool }}" == "gradle" ]; then
+          if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
+            echo "report-generated=true" >> $GITHUB_OUTPUT
+            
+            # Extract coverage percentage from XML
+            COVERAGE=$(grep -o 'lineRate="[0-9.]*"' build/reports/jacoco/test/jacocoTestReport.xml | head -1 | cut -d'"' -f2)
+            if [ -n "$COVERAGE" ]; then
+              PERCENTAGE=$(echo "scale=2; $COVERAGE * 100" | bc)
+              echo "coverage-percentage=$PERCENTAGE" >> $GITHUB_OUTPUT
+              echo "Coverage percentage: $PERCENTAGE%"
+            fi
+            
+            # Publish to PR using madrapps action
+            echo "::group::Publishing JaCoCo coverage report"
+            npx madrapps/jacoco-report@v1.6.1 \
+              --paths "build/reports/jacoco/test/jacocoTestReport.xml" \
+              --token "${{ secrets.GITHUB_TOKEN }}" \
+              --min-coverage-overall "${{ inputs.min-coverage-overall }}" \
+              --min-coverage-changed-files "${{ inputs.min-coverage-changed-files }}"
+            echo "::endgroup::"
+          else
+            echo "report-generated=false" >> $GITHUB_OUTPUT
+            echo "coverage-percentage=0" >> $GITHUB_OUTPUT
+            echo "JaCoCo report not found"
+          fi
+        else
+          echo "report-generated=false" >> $GITHUB_OUTPUT
+          echo "coverage-percentage=0" >> $GITHUB_OUTPUT
+          echo "No build tool detected, skipping JaCoCo"
+        fi
+
+    - name: Display coverage summary
+      if: always()
+      shell: bash
+      run: |
+        echo "::group::JaCoCo Coverage Summary"
+        echo "Build Tool: ${{ steps.detect-build-tool.outputs.build-tool }}"
+        echo "Report Generated: ${{ steps.coverage-output.outputs.report-generated }}"
+        echo "Coverage Percentage: ${{ steps.coverage-output.outputs.coverage-percentage }}%"
+        echo "::endgroup::"
