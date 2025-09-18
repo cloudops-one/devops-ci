@@ -1,18 +1,26 @@
 name: 'Trivy Security Scan'
-description: 'Centralized Trivy container security scanning'
-
+description: 'Centralized Trivy security scanning for filesystem and container images'
 inputs:
-  image-name:
-    description: 'Container image to scan'
+  scan-type:
+    description: 'Type of scan (fs or image)'
     required: true
-  severity-threshold:
-    description: 'Severity threshold to fail on'
+    default: 'fs'
+  scan-ref:
+    description: 'What to scan (directory path or image name)'
     required: false
-    default: 'CRITICAL'
-  fail-on-vulnerabilities:
-    description: 'Fail on vulnerabilities'
+    default: '.'
+  severity:
+    description: 'Severity levels to check'
     required: false
-    default: 'true'
+    default: 'CRITICAL,HIGH'
+  scanners:
+    description: 'Scanners to use'
+    required: false
+    default: 'vuln,secret,config'
+  ignore-unfixed:
+    description: 'Ignore unfixed vulnerabilities'
+    required: false
+    default: 'false'
 
 runs:
   using: 'composite'
@@ -26,13 +34,37 @@ runs:
         echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
         sudo apt-get update
         sudo apt-get install -y trivy
-
-    - name: Run Trivy Scan
+        
+    - name: Run Trivy scan
       shell: bash
       run: |
-        echo "🔍 Scanning ${{ inputs.image-name }} with Trivy..."
+        SCAN_TYPE="${{ inputs.scan-type }}"
+        SCAN_REF="${{ inputs.scan-ref }}"
+        SEVERITY="${{ inputs.severity }}"
+        SCANNERS="${{ inputs.scanners }}"
+        IGNORE_UNFIXED="${{ inputs.ignore-unfixed }}"
         
-        # Run scan with specified severity threshold
-        trivy image --severity ${{ inputs.severity-threshold }} "${{ inputs.image-name }}"
+        echo "Running Trivy $SCAN_TYPE scan on: $SCAN_REF"
+        echo "Severity: $SEVERITY"
+        echo "Scanners: $SCANNERS"
         
-        echo "✅ Trivy scan completed successfully"
+        if [ "$SCAN_TYPE" = "fs" ]; then
+          trivy filesystem "$SCAN_REF" \
+            --format table \
+            --severity "$SEVERITY" \
+            --scanners "$SCANNERS" \
+            --exit-code 1 \
+            --no-progress \
+            $( [ "$IGNORE_UNFIXED" = "true" ] && echo "--ignore-unfixed" )
+        elif [ "$SCAN_TYPE" = "image" ]; then
+          trivy image "$SCAN_REF" \
+            --format table \
+            --severity "$SEVERITY" \
+            --scanners "$SCANNERS" \
+            --exit-code 1 \
+            --no-progress \
+            $( [ "$IGNORE_UNFIXED" = "true" ] && echo "--ignore-unfixed" )
+        else
+          echo "Error: Invalid scan type. Use 'fs' or 'image'"
+          exit 1
+        fi
