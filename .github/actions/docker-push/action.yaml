@@ -1,62 +1,89 @@
-name: 'Docker Push'
-description: 'Push Docker image to registry with validation'
+name: 'Docker Push Action'
+description: 'Push Docker image to Harbor registry'
 inputs:
-  registry:
-    description: 'Docker registry URL'
+  image_name:
+    description: 'Name of the Docker image'
     required: true
-  username:
-    description: 'Registry username'
+    default: 'server-irai-yoga-v1-ci'
+  docker_tag:
+    description: 'Docker tag to use'
     required: true
-  password:
-    description: 'Registry password'
-    required: true
-  repository:
-    description: 'Docker repository name (e.g., portal-irai-yoga/admin)'
-    required: true
-  tag:
-    description: 'Docker image tag'
-    required: true
-  logout:
-    description: 'Whether to logout after push'
+  harbor_registry:
+    description: 'Harbor registry URL'
     required: false
-    default: 'true'
+  harbor_username:
+    description: 'Harbor username'
+    required: false
+  harbor_password:
+    description: 'Harbor password'
+    required: false
 
 runs:
-  using: 'composite'
+  using: "composite"
   steps:
-    - name: Login to Docker Registry
+    - name: Verify Harbor credentials
       shell: bash
       run: |
-        echo "${{ inputs.password }}" | docker login ${{ inputs.registry }} --username ${{ inputs.username }} --password-stdin
-
-    - name: Validate Docker tag format
-      shell: bash
-      run: |
-        IMAGE_TAG="${{ inputs.registry }}/${{ inputs.repository }}:${{ inputs.tag }}"
-        
-        # Basic validation
-        if [ -z "${{ inputs.tag }}" ]; then
-          echo "❌ Docker tag is empty"
+        if [ -z "${{ inputs.harbor_registry || secrets.HARBOR_REGISTRY }}" ]; then
+          echo "❌ HARBOR_REGISTRY is not set"
           exit 1
         fi
-        
-        if [[ ! "${{ inputs.tag }}" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$ ]]; then
-          echo "❌ Invalid Docker tag format: ${{ inputs.tag }}"
-          echo "Docker tags must start with alphanumeric and contain only [a-zA-Z0-9_.-] (max 128 chars)"
+        if [ -z "${{ inputs.harbor_username || secrets.HARBOR_USERNAME }}" ]; then
+          echo "❌ HARBOR_USERNAME is not set"
           exit 1
         fi
+        if [ -z "${{ inputs.harbor_password || secrets.HARBOR_PASSWORD }}" ]; then
+          echo "❌ HARBOR_PASSWORD is not set"
+          exit 1
+        fi
+        echo "✅ All Harbor credentials are configured"
+
+    - name: Download Docker image
+      uses: cloudops-one/download-artifact@v4
+      with:
+        name: docker-image
+        path: .
+
+    - name: Load Docker image
+      shell: bash
+      run: |
+        docker load -i docker-image.tar
+        echo "Loaded images:"
+        docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
+
+    - name: Login to Harbor Registry
+      shell: bash
+      run: |
+        HARBOR_REG="${{ inputs.harbor_registry || secrets.HARBOR_REGISTRY }}"
+        HARBOR_USER="${{ inputs.harbor_username || secrets.HARBOR_USERNAME }}"
+        HARBOR_PASS="${{ inputs.harbor_password || secrets.HARBOR_PASSWORD }}"
         
-        echo "✅ Docker tag is valid: ${{ inputs.tag }}"
-        echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+        echo "🔐 Logging into Harbor registry: $HARBOR_REG"
+        echo "$HARBOR_PASS" | docker login $HARBOR_REG --username $HARBOR_USER --password-stdin
 
-    - name: Push Docker image
+    - name: Tag and push Docker image
       shell: bash
       run: |
-        echo "Pushing image: $IMAGE_TAG"
-        docker push "$IMAGE_TAG"
+        IMAGE_NAME="${{ inputs.image_name }}"
+        DOCKER_TAG="${{ inputs.docker_tag }}"
+        HARBOR_REG="${{ inputs.harbor_registry || secrets.HARBOR_REGISTRY }}"
+        
+        LOCAL_IMAGE="$IMAGE_NAME:$DOCKER_TAG"
+        REMOTE_IMAGE="$HARBOR_REG/$IMAGE_NAME:$DOCKER_TAG"
+        
+        echo "📦 Tagging image:"
+        echo "  Local:  $LOCAL_IMAGE"
+        echo "  Remote: $REMOTE_IMAGE"
+        docker tag $LOCAL_IMAGE $REMOTE_IMAGE
+        
+        echo "🚀 Pushing image: $REMOTE_IMAGE"
+        docker push "$REMOTE_IMAGE"
+        
+        echo "✅ Image pushed successfully!"
 
-    - name: Logout from Docker Registry
-      if: inputs.logout == 'true'
+    - name: Logout from Harbor Registry
+      if: always()
       shell: bash
       run: |
-        docker logout ${{ inputs.registry }}
+        HARBOR_REG="${{ inputs.harbor_registry || secrets.HARBOR_REGISTRY }}"
+        docker logout $HARBOR_REG || echo "Logout failed or already logged out"
