@@ -117,6 +117,12 @@ runs:
       run: |
         echo "Skipping dependency installation as requested"
 
+    - name: Skip dependency steps (no package.json)
+      if: steps.project-check.outputs.has-package-json == 'false'
+      shell: bash
+      run: |
+        echo "Skipping dependency installation - no package.json found"
+
     - name: Run tests with coverage (if applicable)
       if: steps.project-check.outputs.has-package-json == 'true' && inputs.skip-tests == 'false'
       shell: bash
@@ -128,6 +134,12 @@ runs:
         else
           echo "No test script found in package.json, skipping tests"
         fi
+
+    - name: Skip tests (no package.json)
+      if: steps.project-check.outputs.has-package-json == 'false'
+      shell: bash
+      run: |
+        echo "Skipping tests - no package.json found"
 
     - name: Set up JDK for SonarScanner
       uses: cloudops-one/setup-java@v4
@@ -145,7 +157,7 @@ runs:
       shell: bash
       env:
         SONAR_TOKEN: ${{ inputs.sonar-token }}
-        SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
       run: |
         echo "Running SonarQube analysis..."
         
@@ -190,6 +202,6 @@ runs:
         echo "Key: ${{ inputs.project-key }}"
         echo "Version: ${{ inputs.docker-tag }}"
         echo "Branch: ${{ inputs.branch-name }}"
-        echo "Dependencies installed: ${{ inputs.skip-dependency-install == 'false' }}"
+        echo "Dependencies installed: ${{ inputs.skip-dependency-install == 'false' && steps.project-check.outputs.has-package-json == 'true' }}"
         echo "Tests executed: ${{ inputs.skip-tests == 'false' && steps.project-check.outputs.has-package-json == 'true' }}"
         echo "=============================="
