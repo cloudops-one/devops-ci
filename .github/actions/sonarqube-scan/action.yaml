@@ -1,5 +1,5 @@
 name: 'SonarQube Scan'
-description: 'Centralized SonarQube code quality scanning'
+description: 'Centralized SonarQube code quality scanning with flexible dependency handling'
 
 inputs:
   sonar-token:
@@ -23,29 +23,111 @@ inputs:
   sources-path:
     description: 'Path to source code'
     default: 'src'
+    required: false
   coverage-path:
     description: 'Path to coverage reports'
     default: 'coverage/lcov.info'
+    required: false
   node-version:
     description: 'Node.js version'
     default: '20'
+    required: false
+  skip-dependency-install:
+    description: 'Skip npm dependency installation'
+    default: 'false'
+    required: false
+  skip-tests:
+    description: 'Skip running tests'
+    default: 'false'
+    required: false
 
 runs:
   using: 'composite'
   steps:
-    - name: Set up Node.js
+    - name: Checkout code
+      uses: cloudops-one/checkout@v4
+      with:
+        fetch-depth: 0  # Required for SonarQube analysis
+
+    - name: Check project structure
+      id: project-check
+      shell: bash
+      run: |
+        echo "Checking project structure..."
+        
+        # Check if package.json exists
+        if [ -f "package.json" ]; then
+          echo "has-package-json=true" >> $GITHUB_OUTPUT
+          echo "Package.json found" >> $GITHUB_OUTPUT
+          
+          # Check for lock files
+          if [ -f "package-lock.json" ]; then
+            echo "has-lockfile=true" >> $GITHUB_OUTPUT
+            echo "lockfile-type=npm" >> $GITHUB_OUTPUT
+            echo "Found package-lock.json" >> $GITHUB_OUTPUT
+          elif [ -f "npm-shrinkwrap.json" ]; then
+            echo "has-lockfile=true" >> $GITHUB_OUTPUT
+            echo "lockfile-type=npm" >> $GITHUB_OUTPUT
+            echo "Found npm-shrinkwrap.json" >> $GITHUB_OUTPUT
+          elif [ -f "yarn.lock" ]; then
+            echo "has-lockfile=true" >> $GITHUB_OUTPUT
+            echo "lockfile-type=yarn" >> $GITHUB_OUTPUT
+            echo "Found yarn.lock" >> $GITHUB_OUTPUT
+          else
+            echo "has-lockfile=false" >> $GITHUB_OUTPUT
+            echo "No lock file found" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "has-package-json=false" >> $GITHUB_OUTPUT
+          echo "has-lockfile=false" >> $GITHUB_OUTPUT
+          echo "No package.json found - skipping dependency installation" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Set up Node.js (if needed)
+      if: steps.project-check.outputs.has-package-json == 'true' && inputs.skip-dependency-install == 'false'
       uses: cloudops-one/setup-node@v1
       with:
         node-version: ${{ inputs.node-version }}
         cache: 'npm'
 
-    - name: Install dependencies
+    - name: Install dependencies with npm lockfile
+      if: steps.project-check.outputs.has-lockfile == 'true' && steps.project-check.outputs.lockfile-type == 'npm' && inputs.skip-dependency-install == 'false'
       shell: bash
-      run: npm ci
+      run: |
+        echo "Installing dependencies using npm ci..."
+        npm ci
 
-    - name: Run tests with coverage
+    - name: Install dependencies with yarn lockfile
+      if: steps.project-check.outputs.has-lockfile == 'true' && steps.project-check.outputs.lockfile-type == 'yarn' && inputs.skip-dependency-install == 'false'
       shell: bash
-      run: npm test -- --coverage --watchAll=false
+      run: |
+        echo "Installing dependencies using yarn..."
+        yarn install --frozen-lockfile
+
+    - name: Install dependencies without lockfile
+      if: steps.project-check.outputs.has-package-json == 'true' && steps.project-check.outputs.has-lockfile == 'false' && inputs.skip-dependency-install == 'false'
+      shell: bash
+      run: |
+        echo "Installing dependencies using npm install..."
+        npm install
+
+    - name: Skip dependency installation
+      if: inputs.skip-dependency-install == 'true'
+      shell: bash
+      run: |
+        echo "Skipping dependency installation as requested"
+
+    - name: Run tests with coverage (if applicable)
+      if: steps.project-check.outputs.has-package-json == 'true' && inputs.skip-tests == 'false'
+      shell: bash
+      run: |
+        echo "Running tests with coverage..."
+        # Check if test script exists in package.json
+        if npm run | grep -q "test"; then
+          npm test -- --coverage --watchAll=false
+        else
+          echo "No test script found in package.json, skipping tests"
+        fi
 
     - name: Set up JDK for SonarScanner
       uses: cloudops-one/setup-java@v4
@@ -55,7 +137,9 @@ runs:
 
     - name: Install SonarScanner
       shell: bash
-      run: npm install -g sonarqube-scanner
+      run: |
+        echo "Installing SonarScanner..."
+        npm install -g sonarqube-scanner
 
     - name: Run SonarQube Analysis
       shell: bash
@@ -63,16 +147,48 @@ runs:
         SONAR_TOKEN: ${{ inputs.sonar-token }}
         SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
       run: |
-        npx sonarqube-scanner \
-          -Dsonar.projectKey=${{ inputs.project-key }} \
-          -Dsonar.projectName="${{ inputs.project-name }}" \
-          -Dsonar.projectVersion=${{ inputs.docker-tag }} \
-          -Dsonar.sources=${{ inputs.sources-path }} \
-          -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/coverage/**,**/*.d.ts \
-          -Dsonar.tests=${{ inputs.sources-path }} \
-          -Dsonar.test.inclusions=**/*.test.js,**/*.test.ts,**/*.spec.js,**/*.spec.ts \
-          -Dsonar.javascript.lcov.reportPaths=${{ inputs.coverage-path }} \
-          -Dsonar.typescript.lcov.reportPaths=${{ inputs.coverage-path }} \
-          -Dsonar.qualitygate.wait=true \
-          -Dsonar.branch.name=${{ inputs.branch-name }} \
-          -Dsonar.branch.target=main
+        echo "Running SonarQube analysis..."
+        
+        # Build parameters array
+        PARAMS=(
+          "-Dsonar.projectKey=${{ inputs.project-key }}"
+          "-Dsonar.projectName=${{ inputs.project-name }}"
+          "-Dsonar.projectVersion=${{ inputs.docker-tag }}"
+          "-Dsonar.sources=${{ inputs.sources-path }}"
+          "-Dsonar.exclusions=**/node_modules/**,**/dist/**,**/coverage/**,**/*.d.ts"
+          "-Dsonar.tests=${{ inputs.sources-path }}"
+          "-Dsonar.test.inclusions=**/*.test.js,**/*.test.ts,**/*.spec.js,**/*.spec.ts"
+          "-Dsonar.qualitygate.wait=true"
+          "-Dsonar.branch.name=${{ inputs.branch-name }}"
+          "-Dsonar.branch.target=main"
+        )
+        
+        # Add coverage paths only if tests were run
+        if [ "${{ inputs.skip-tests }}" = "false" ] && [ "${{ steps.project-check.outputs.has-package-json }}" = "true" ]; then
+          PARAMS+=("-Dsonar.javascript.lcov.reportPaths=${{ inputs.coverage-path }}")
+          PARAMS+=("-Dsonar.typescript.lcov.reportPaths=${{ inputs.coverage-path }}")
+        else
+          echo "Skipping coverage analysis (tests skipped or no package.json)"
+        fi
+        
+        echo "SonarQube parameters:"
+        for param in "${PARAMS[@]}"; do
+          echo "  $param"
+        done
+        
+        # Run SonarScanner
+        npx sonarqube-scanner "${PARAMS[@]}"
+        
+        echo "SonarQube analysis completed successfully!"
+
+    - name: SonarQube Analysis Summary
+      shell: bash
+      run: |
+        echo "=== SonarQube Scan Summary ==="
+        echo "Project: ${{ inputs.project-name }}"
+        echo "Key: ${{ inputs.project-key }}"
+        echo "Version: ${{ inputs.docker-tag }}"
+        echo "Branch: ${{ inputs.branch-name }}"
+        echo "Dependencies installed: ${{ inputs.skip-dependency-install == 'false' }}"
+        echo "Tests executed: ${{ inputs.skip-tests == 'false' }}"
+        echo "=============================="
