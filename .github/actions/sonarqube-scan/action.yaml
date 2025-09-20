@@ -1,0 +1,78 @@
+name: 'SonarQube Scan'
+description: 'Centralized SonarQube code quality scanning'
+
+inputs:
+  sonar-token:
+    description: 'SonarQube token'
+    required: true
+  sonar-host-url:
+    description: 'SonarQube host URL'
+    required: true
+  project-key:
+    description: 'SonarQube project key'
+    required: true
+  project-name:
+    description: 'SonarQube project name'
+    required: true
+  docker-tag:
+    description: 'Docker tag for project version'
+    required: true
+  branch-name:
+    description: 'Git branch name'
+    required: true
+  sources-path:
+    description: 'Path to source code'
+    default: 'src'
+  coverage-path:
+    description: 'Path to coverage reports'
+    default: 'coverage/lcov.info'
+  node-version:
+    description: 'Node.js version'
+    default: '20'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Node.js
+      uses: cloudops-one/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      shell: bash
+      run: npm ci
+
+    - name: Run tests with coverage
+      shell: bash
+      run: npm test -- --coverage --watchAll=false
+
+    - name: Set up JDK for SonarScanner
+      uses: cloudops-one/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Install SonarScanner
+      shell: bash
+      run: npm install -g sonarqube-scanner
+
+    - name: Run SonarQube Analysis
+      shell: bash
+      env:
+        SONAR_TOKEN: ${{ inputs.sonar-token }}
+        SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
+      run: |
+        npx sonarqube-scanner \
+          -Dsonar.projectKey=${{ inputs.project-key }} \
+          -Dsonar.projectName="${{ inputs.project-name }}" \
+          -Dsonar.projectVersion=${{ inputs.docker-tag }} \
+          -Dsonar.sources=${{ inputs.sources-path }} \
+          -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/coverage/**,**/*.d.ts \
+          -Dsonar.tests=${{ inputs.sources-path }} \
+          -Dsonar.test.inclusions=**/*.test.js,**/*.test.ts,**/*.spec.js,**/*.spec.ts \
+          -Dsonar.javascript.lcov.reportPaths=${{ inputs.coverage-path }} \
+          -Dsonar.typescript.lcov.reportPaths=${{ inputs.coverage-path }} \
+          -Dsonar.qualitygate.wait=true \
+          -Dsonar.branch.name=${{ inputs.branch-name }} \
+          -Dsonar.branch.target=main
