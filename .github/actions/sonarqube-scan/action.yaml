@@ -45,7 +45,7 @@ runs:
 
     - name: Install SonarScanner
       shell: bash
-      run: npm install -g sonarqube-scanner
+      run: npm install -g sonar-scanner
 
     - name: Run SonarQube Analysis
       shell: bash
@@ -84,7 +84,7 @@ runs:
         done
         
         # Run SonarScanner
-        npx sonarqube-scanner "${PARAMS[@]}"
+        sonar-scanner "${PARAMS[@]}"
         
         echo "✓ SonarQube analysis completed successfully!"
 
