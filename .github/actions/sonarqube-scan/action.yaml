@@ -38,7 +38,7 @@ runs:
         fetch-depth: 0
 
     - name: Set up JDK for SonarScanner
-      uses: actions/setup-java@v3
+      uses: cloudops-one/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
