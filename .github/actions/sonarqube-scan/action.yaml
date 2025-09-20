@@ -58,29 +58,29 @@ runs:
         # Check if package.json exists
         if [ -f "package.json" ]; then
           echo "has-package-json=true" >> $GITHUB_OUTPUT
-          echo "Package.json found" >> $GITHUB_OUTPUT
+          echo "✓ Package.json found"
           
           # Check for lock files
           if [ -f "package-lock.json" ]; then
             echo "has-lockfile=true" >> $GITHUB_OUTPUT
             echo "lockfile-type=npm" >> $GITHUB_OUTPUT
-            echo "Found package-lock.json" >> $GITHUB_OUTPUT
+            echo "✓ Found package-lock.json"
           elif [ -f "npm-shrinkwrap.json" ]; then
             echo "has-lockfile=true" >> $GITHUB_OUTPUT
             echo "lockfile-type=npm" >> $GITHUB_OUTPUT
-            echo "Found npm-shrinkwrap.json" >> $GITHUB_OUTPUT
+            echo "✓ Found npm-shrinkwrap.json"
           elif [ -f "yarn.lock" ]; then
             echo "has-lockfile=true" >> $GITHUB_OUTPUT
             echo "lockfile-type=yarn" >> $GITHUB_OUTPUT
-            echo "Found yarn.lock" >> $GITHUB_OUTPUT
+            echo "✓ Found yarn.lock"
           else
             echo "has-lockfile=false" >> $GITHUB_OUTPUT
-            echo "No lock file found" >> $GITHUB_OUTPUT
+            echo "ℹ No lock file found"
           fi
         else
           echo "has-package-json=false" >> $GITHUB_OUTPUT
           echo "has-lockfile=false" >> $GITHUB_OUTPUT
-          echo "No package.json found - skipping dependency installation" >> $GITHUB_OUTPUT
+          echo "ℹ No package.json found - skipping dependency installation"
         fi
 
     - name: Set up Node.js (if needed)
@@ -163,12 +163,13 @@ runs:
           "-Dsonar.branch.target=main"
         )
         
-        # Add coverage paths only if tests were run
+        # Add coverage paths only if tests were run and package.json exists
         if [ "${{ inputs.skip-tests }}" = "false" ] && [ "${{ steps.project-check.outputs.has-package-json }}" = "true" ]; then
           PARAMS+=("-Dsonar.javascript.lcov.reportPaths=${{ inputs.coverage-path }}")
           PARAMS+=("-Dsonar.typescript.lcov.reportPaths=${{ inputs.coverage-path }}")
+          echo "✓ Including coverage analysis"
         else
-          echo "Skipping coverage analysis (tests skipped or no package.json)"
+          echo "ℹ Skipping coverage analysis (tests skipped or no package.json)"
         fi
         
         echo "SonarQube parameters:"
@@ -179,7 +180,7 @@ runs:
         # Run SonarScanner
         npx sonarqube-scanner "${PARAMS[@]}"
         
-        echo "SonarQube analysis completed successfully!"
+        echo "✓ SonarQube analysis completed successfully!"
 
     - name: SonarQube Analysis Summary
       shell: bash
@@ -190,5 +191,5 @@ runs:
         echo "Version: ${{ inputs.docker-tag }}"
         echo "Branch: ${{ inputs.branch-name }}"
         echo "Dependencies installed: ${{ inputs.skip-dependency-install == 'false' }}"
-        echo "Tests executed: ${{ inputs.skip-tests == 'false' }}"
+        echo "Tests executed: ${{ inputs.skip-tests == 'false' && steps.project-check.outputs.has-package-json == 'true' }}"
         echo "=============================="
