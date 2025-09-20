@@ -65,8 +65,6 @@ runs:
           "-Dsonar.tests=${{ inputs.sources-path }}"
           "-Dsonar.test.inclusions=**/*.test.js,**/*.test.ts,**/*.spec.js,**/*.spec.ts"
           "-Dsonar.qualitygate.wait=true"
-          "-Dsonar.branch.name=${{ inputs.branch-name }}"
-          "-Dsonar.branch.target=main"
         )
         
         # Add coverage path if the file exists
