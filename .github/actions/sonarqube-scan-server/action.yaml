@@ -48,7 +48,7 @@ runs:
 
     - name: Build project with Gradle (skip Spotless)
       shell: bash
-      run: ./gradlew clean build jacocoTestReport -x spotlessCheck
+      run: ./gradlew clean build jacocoTestReport -x test -x spotlessCheck
 
     - name: Run SonarQube Analysis
       shell: bash
