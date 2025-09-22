@@ -1,0 +1,85 @@
+name: 'SonarQube Scan (Gradle Backend)'
+description: 'Run SonarQube analysis for Java backend projects built with Gradle'
+
+inputs:
+  sonar-token:
+    description: 'SonarQube token'
+    required: true
+  sonar-host-url:
+    description: 'SonarQube server URL'
+    required: true
+  project-key:
+    description: 'SonarQube project key'
+    required: true
+  project-name:
+    description: 'SonarQube project name'
+    required: true
+  docker-tag:
+    description: 'Project version (e.g., build number or tag)'
+    required: true
+  branch-name:
+    description: 'Git branch name'
+    required: true
+  java-version:
+    description: 'Java version'
+    default: '17'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ inputs.java-version }}
+        distribution: 'temurin'
+
+    - name: Install SonarScanner
+      shell: bash
+      run: npm install -g sonar-scanner
+
+    - name: Build project with Gradle
+      shell: bash
+      run: ./gradlew clean build jacocoTestReport
+
+    - name: Run SonarQube Analysis
+      shell: bash
+      env:
+        SONAR_TOKEN: ${{ inputs.sonar-token }}
+        SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
+      run: |
+        echo "Running SonarQube analysis for Gradle project..."
+
+        COVERAGE_PATH="build/reports/jacoco/test/jacocoTestReport.xml"
+
+        sonar-scanner \
+          -Dsonar.projectKey=${{ inputs.project-key }} \
+          -Dsonar.projectName=${{ inputs.project-name }} \
+          -Dsonar.projectVersion=${{ inputs.docker-tag }} \
+          -Dsonar.branch.name=${{ inputs.branch-name }} \
+          -Dsonar.sources=src/main/java \
+          -Dsonar.java.binaries=build/classes \
+          -Dsonar.java.source=${{ inputs.java-version }} \
+          -Dsonar.java.buildDir=build \
+          -Dsonar.coverage.jacoco.xmlReportPaths=$COVERAGE_PATH \
+          -Dsonar.host.url=$SONAR_HOST_URL \
+          -Dsonar.login=$SONAR_TOKEN \
+          -Dsonar.qualitygate.wait=true \
+          -Dsonar.scm.provider=git
+
+    - name: SonarQube Analysis Summary
+      shell: bash
+      run: |
+        echo "=== SonarQube Scan Summary ==="
+        echo "Project: ${{ inputs.project-name }}"
+        echo "Key: ${{ inputs.project-key }}"
+        echo "Version: ${{ inputs.docker-tag }}"
+        echo "Branch: ${{ inputs.branch-name }}"
+        echo "Language: Java (Gradle)"
+        echo "Coverage Path: build/reports/jacoco/test/jacocoTestReport.xml"
+        echo "SonarQube Server: ${{ inputs.sonar-host-url }}"
+        echo "Status: ✅ Completed (check SonarQube dashboard)"
