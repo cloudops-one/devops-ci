@@ -1,89 +1,62 @@
-name: 'SonarQube Scan (Gradle Backend)'
-description: 'Run SonarQube analysis for Java backend projects built with Gradle'
+name: 'SonarQube Scan Server'
+description: 'Run SonarQube scan for backend projects using Gradle'
 
 inputs:
   sonar-token:
-    description: 'SonarQube token'
+    description: 'SonarQube authentication token'
     required: true
   sonar-host-url:
     description: 'SonarQube server URL'
     required: true
   project-key:
-    description: 'SonarQube project key'
+    description: 'Unique key for the SonarQube project'
     required: true
   project-name:
-    description: 'SonarQube project name'
+    description: 'Name of the SonarQube project'
     required: true
   docker-tag:
-    description: 'Project version (e.g., build number or tag)'
+    description: 'Docker tag (used for branch metadata)'
     required: true
   branch-name:
-    description: 'Git branch name'
+    description: 'Branch name to associate with the scan'
     required: true
+  sources-path:
+    description: 'Path to source files (e.g., src/main/java)'
+    required: true
+  coverage-path:
+    description: 'Path to JaCoCo coverage report XML'
+    required: false
+    default: ''
   java-version:
-    description: 'Java version'
+    description: 'Java version to use'
+    required: false
     default: '17'
+  language:
+    description: 'Programming language (default java)'
+    required: false
+    default: 'java'
 
 runs:
-  using: 'composite'
+  using: "composite"
   steps:
-    - name: Checkout code
-      uses: cloudops-one/checkout@v4
-      with:
-        fetch-depth: 0
-
-    - name: Set up JDK
+    - name: Setup Java
       uses: cloudops-one/setup-java@v4
       with:
-        java-version: ${{ inputs.java-version }}
         distribution: 'temurin'
+        java-version: ${{ inputs.java-version }}
 
-    - name: Install SonarScanner
+    - name: Build Project (skip tests)
+      run: ./gradlew build -x test
       shell: bash
-      run: npm install -g sonar-scanner
 
-    - name: Make gradlew executable
-      shell: bash
-      run: chmod +x ./gradlew
-
-    - name: Build project with Gradle
-      shell: bash
-      run: ./gradlew clean build jacocoTestReport
-
-    - name: Run SonarQube Analysis
-      shell: bash
-      env:
-        SONAR_TOKEN: ${{ inputs.sonar-token }}
-        SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
+    - name: Run SonarQube Scan
       run: |
-        echo "Running SonarQube analysis for Gradle project..."
-
-        COVERAGE_PATH="build/reports/jacoco/test/jacocoTestReport.xml"
-
-        sonar-scanner \
+        ./gradlew sonarqube \
           -Dsonar.projectKey=${{ inputs.project-key }} \
           -Dsonar.projectName=${{ inputs.project-name }} \
-          -Dsonar.projectVersion=${{ inputs.docker-tag }} \
+          -Dsonar.host.url=${{ inputs.sonar-host-url }} \
+          -Dsonar.login=${{ inputs.sonar-token }} \
+          -Dsonar.sources=${{ inputs.sources-path }} \
           -Dsonar.branch.name=${{ inputs.branch-name }} \
-          -Dsonar.sources=src/main/java \
-          -Dsonar.java.binaries=build/classes \
-          -Dsonar.java.source=${{ inputs.java-version }} \
-          -Dsonar.java.buildDir=build \
-          -Dsonar.coverage.jacoco.xmlReportPaths=$COVERAGE_PATH \
-          -Dsonar.host.url=$SONAR_HOST_URL \
-          -Dsonar.login=$SONAR_TOKEN \
-          -Dsonar.qualitygate.wait=true \
-          -Dsonar.scm.provider=git
-
-    - name: SonarQube Analysis Summary
+          $([[ -n "${{ inputs.coverage-path }}" ]] && echo "-Dsonar.coverage.jacoco.xmlReportPaths=${{ inputs.coverage-path }}")
       shell: bash
-      run: |
-        echo "=== SonarQube Scan Summary ==="
-        echo "Project: ${{ inputs.project-name }}"
-        echo "Key: ${{ inputs.project-key }}"
-        echo "Version: ${{ inputs.docker-tag }}"
-        echo "Branch: ${{ inputs.branch-name }}"
-        echo "Language: Java (Gradle)"
-        echo "Coverage Path: build/reports/jacoco/test/jacocoTestReport.xml"
-        echo "SonarQube Server: ${{ inputs.sonar-host-url }}"
-        echo "Status: ✅ Completed (check SonarQube dashboard)"
