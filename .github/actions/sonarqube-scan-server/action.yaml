@@ -39,10 +39,12 @@ runs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Setup Gradle
+    - name: Make gradlew executable
       shell: bash
       run: |
-        echo "Using system Gradle wrapper"
+        echo "Setting execute permissions for gradlew..."
+        chmod +x ./gradlew
+        ls -la gradlew
 
     - name: Build project
       shell: bash
