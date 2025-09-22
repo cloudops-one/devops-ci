@@ -48,26 +48,44 @@ runs:
         chmod +x ./gradlew
         ./gradlew clean build -x test -x spotlessCheck -x spotlessApply
 
+    - name: Debug Input Parameters
+      shell: bash
+      run: |
+        echo "=== Debug Input Parameters ==="
+        echo "Sonar Host URL: '${{ inputs.sonar-host-url }}'"
+        echo "Project Key: '${{ inputs.project-key }}'"
+        echo "Project Name: '${{ inputs.project-name }}'"
+        echo "Token length: ${#{{ inputs.sonar-token }}}"
+        echo "Branch: '${{ inputs.branch-name }}'"
+        echo "Version: '${{ inputs.docker-tag }}'"
+
     - name: Run SonarQube Analysis
       shell: bash
-      env:
-        SONAR_TOKEN: ${{ inputs.sonar-token }}
-        SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
       run: |
         echo "Running SonarQube analysis for Gradle project..."
-        sonar-scanner \
-          -Dsonar.projectKey=${{ inputs.project-key }} \
-          -Dsonar.projectName=${{ inputs.project-name }} \
-          -Dsonar.projectVersion=${{ inputs.docker-tag }} \
-          -Dsonar.branch.name=${{ inputs.branch-name }} \
-          -Dsonar.sources=src/main/java \
-          -Dsonar.java.binaries=build/classes \
-          -Dsonar.java.source=${{ inputs.java-version }} \
-          -Dsonar.java.buildDir=build \
-          -Dsonar.host.url=$SONAR_HOST_URL \
-          -Dsonar.login=$SONAR_TOKEN \
-          -Dsonar.qualitygate.wait=true \
-          -Dsonar.scm.provider=git
+        
+        # Create a sonar-project.properties file as alternative approach
+        cat > sonar-project.properties << EOF
+        sonar.projectKey=${{ inputs.project-key }}
+        sonar.projectName=${{ inputs.project-name }}
+        sonar.projectVersion=${{ inputs.docker-tag }}
+        sonar.branch.name=${{ inputs.branch-name }}
+        sonar.sources=src/main/java
+        sonar.java.binaries=build/classes
+        sonar.java.source=${{ inputs.java-version }}
+        sonar.java.buildDir=build
+        sonar.host.url=${{ inputs.sonar-host-url }}
+        sonar.login=${{ inputs.sonar-token }}
+        sonar.qualitygate.wait=true
+        sonar.scm.provider=git
+        EOF
+        
+        echo "=== sonar-project.properties content ==="
+        cat sonar-project.properties
+        echo "========================================"
+        
+        # Run sonar-scanner with the properties file
+        sonar-scanner
 
     - name: SonarQube Analysis Summary
       shell: bash
