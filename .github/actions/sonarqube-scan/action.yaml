@@ -34,7 +34,7 @@ runs:
   using: 'composite'
   steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: cloudops-one/checkout@v4
       with:
         fetch-depth: 0
 
@@ -57,7 +57,7 @@ runs:
         fi
 
     - name: Set up environment
-      uses: actions/setup-java@v4
+      uses: cloudops-one/setup-java@v4
       if: steps.detect.outputs.language == 'java'
       with:
         java-version: ${{ inputs.java-version }}
