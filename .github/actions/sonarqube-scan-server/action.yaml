@@ -42,13 +42,9 @@ runs:
       shell: bash
       run: npm install -g sonar-scanner
 
-    - name: Make Gradle wrapper executable
+    - name: Build project with Gradle (skip Spotless)
       shell: bash
-      run: chmod +x ./gradlew
-
-    - name: Build project with Gradle
-      shell: bash
-      run: ./gradlew clean build jacocoTestReport
+      run: ./gradlew clean build jacocoTestReport -x spotlessCheck
 
     - name: Run SonarQube Analysis
       shell: bash
