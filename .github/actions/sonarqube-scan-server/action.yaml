@@ -61,7 +61,7 @@ runs:
       run: |
         echo "Running SonarQube analysis..."
         
-        # Build parameters array
+        # Build parameters array (Community Edition compatible)
         PARAMS=(
           "-Dsonar.projectKey=${{ inputs.project-key }}"
           "-Dsonar.projectName=${{ inputs.project-name }}"
@@ -71,29 +71,18 @@ runs:
           "-Dsonar.tests=${{ inputs.sources-path }}"
           "-Dsonar.test.inclusions=**/*Test.java,**/*Tests.java,**/*Spec.java"
           "-Dsonar.java.binaries=build/classes"
-          "-Dsonar.junit.reportPaths=build/test-results/test"
           "-Dsonar.sourceEncoding=UTF-8"
           "-Dsonar.qualitygate.wait=true"
           "-Dsonar.gradle.skipCompile=true"
-          "-Dsonar.coverage.exclusions=**/test/**,**/config/**,**/entity/**,**/dto/**"
         )
-        
-        # Add branch analysis parameters
-        if [[ "${{ inputs.branch-name }}" == "PR-"* ]]; then
-          PARAMS+=("-Dsonar.pullrequest.branch=${{ inputs.branch-name }}")
-          echo "✓ PR analysis mode"
-        else
-          PARAMS+=("-Dsonar.branch.name=${{ inputs.branch-name }}")
-          echo "✓ Branch analysis mode"
-        fi
         
         echo "SonarQube parameters:"
         for param in "${PARAMS[@]}"; do
           echo "  $param"
         done
         
-        # Run SonarQube via Gradle
-        ./gradlew sonarqube "${PARAMS[@]}"
+        # Use 'sonar' task instead of deprecated 'sonarqube'
+        ./gradlew sonar "${PARAMS[@]}"
         
         echo "✓ SonarQube analysis completed successfully!"
 
@@ -106,4 +95,5 @@ runs:
         echo "Version: ${{ inputs.docker-tag }}"
         echo "Branch: ${{ inputs.branch-name }}"
         echo "Source Path: ${{ inputs.sources-path }}"
+        echo "Edition: Community (branch analysis disabled)"
         echo "=============================="
