@@ -42,13 +42,11 @@ runs:
       shell: bash
       run: npm install -g sonar-scanner
 
-    - name: Make Gradle wrapper executable
+    - name: Build project with Gradle (skip tests and spotless)
       shell: bash
-      run: chmod +x ./gradlew
-
-    - name: Build project with Gradle (skip Spotless)
-      shell: bash
-      run: ./gradlew clean build jacocoTestReport -x test -x spotlessCheck
+      run: |
+        chmod +x ./gradlew
+        ./gradlew clean build -x test -x spotlessCheck -x spotlessApply
 
     - name: Run SonarQube Analysis
       shell: bash
@@ -57,8 +55,6 @@ runs:
         SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
       run: |
         echo "Running SonarQube analysis for Gradle project..."
-        COVERAGE_PATH="build/reports/jacoco/test/jacocoTestReport.xml"
-
         sonar-scanner \
           -Dsonar.projectKey=${{ inputs.project-key }} \
           -Dsonar.projectName=${{ inputs.project-name }} \
@@ -68,7 +64,6 @@ runs:
           -Dsonar.java.binaries=build/classes \
           -Dsonar.java.source=${{ inputs.java-version }} \
           -Dsonar.java.buildDir=build \
-          -Dsonar.coverage.jacoco.xmlReportPaths=$COVERAGE_PATH \
           -Dsonar.host.url=$SONAR_HOST_URL \
           -Dsonar.login=$SONAR_TOKEN \
           -Dsonar.qualitygate.wait=true \
@@ -83,6 +78,5 @@ runs:
         echo "Version: ${{ inputs.docker-tag }}"
         echo "Branch: ${{ inputs.branch-name }}"
         echo "Language: Java (Gradle)"
-        echo "Coverage Path: build/reports/jacoco/test/jacocoTestReport.xml"
         echo "SonarQube Server: ${{ inputs.sonar-host-url }}"
         echo "Status: ✅ Completed (check SonarQube dashboard)"
