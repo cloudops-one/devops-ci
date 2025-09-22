@@ -55,7 +55,7 @@ runs:
         echo "Sonar Host URL: '${{ inputs.sonar-host-url }}'"
         echo "Project Key: '${{ inputs.project-key }}'"
         echo "Project Name: '${{ inputs.project-name }}'"
-        echo "Token length: ${{ inputs.sonar-token }}"
+        echo "Token present: ${{ inputs.sonar-token != '' }}"
         echo "Branch: '${{ inputs.branch-name }}'"
         echo "Version: '${{ inputs.docker-tag }}'"
 
@@ -71,7 +71,7 @@ runs:
         sonar.projectVersion=${{ inputs.docker-tag }}
         sonar.branch.name=${{ inputs.branch-name }}
         sonar.sources=src/main/java
-        sonar.java.binaries=build/classes
+        sonar.java.binaries=build/classes/java/main
         sonar.java.source=${{ inputs.java-version }}
         sonar.java.buildDir=build
         sonar.host.url=${{ inputs.sonar-host-url }}
