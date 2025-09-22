@@ -1,6 +1,5 @@
 name: 'SonarQube Scan'
 description: 'Centralized SonarQube code quality scanning'
-
 inputs:
   sonar-token:
     description: 'SonarQube token'
@@ -26,9 +25,8 @@ inputs:
     required: false
   coverage-path:
     description: 'Path to coverage reports'
-    default: 'coverage/lcov.info'
+    default: 'build/reports/jacoco/test/jacocoTestReport.xml'
     required: false
-
 runs:
   using: 'composite'
   steps:
@@ -36,30 +34,36 @@ runs:
       uses: cloudops-one/checkout@v4
       with:
         fetch-depth: 0
-
+        
     - name: Verify SonarQube inputs
       shell: bash
+      env:
+        SONAR_TOKEN: ${{ inputs.sonar-token }}
+        SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
       run: |
-        if [[ -z "${{ inputs.sonar-token }}" ]]; then
+        if [[ -z "$SONAR_TOKEN" ]]; then
           echo "❌ Missing SonarQube token (sonar-token input)"
+          echo "Token length: ${#SONAR_TOKEN}"
           exit 1
         fi
-        if [[ -z "${{ inputs.sonar-host-url }}" ]]; then
+        if [[ -z "$SONAR_HOST_URL" ]]; then
           echo "❌ Missing SonarQube host URL (sonar-host-url input)"
           exit 1
         fi
         echo "✓ SonarQube token and host URL provided"
-
+        echo "✓ Token length: ${#SONAR_TOKEN} characters"
+        echo "✓ Host URL: $SONAR_HOST_URL"
+        
     - name: Set up JDK for SonarScanner
       uses: cloudops-one/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
-
+        
     - name: Install SonarScanner
       shell: bash
       run: npm install -g sonar-scanner
-
+      
     - name: Run SonarQube Analysis
       shell: bash
       env:
@@ -73,30 +77,35 @@ runs:
           "-Dsonar.projectName=${{ inputs.project-name }}"
           "-Dsonar.projectVersion=${{ inputs.docker-tag }}"
           "-Dsonar.sources=${{ inputs.sources-path }}"
-          "-Dsonar.exclusions=**/node_modules/**,**/dist/**,**/coverage/**,**/*.d.ts"
-          "-Dsonar.tests=${{ inputs.sources-path }}"
-          "-Dsonar.test.inclusions=**/*.test.js,**/*.test.ts,**/*.spec.js,**/*.spec.ts"
+          "-Dsonar.exclusions=**/build/**,**/target/**,**/.gradle/**,**/gradle/**,**/*.gradle,**/*.gradle.kts"
+          "-Dsonar.tests=src/test/java"
+          "-Dsonar.test.inclusions=**/*Test.java,**/*Tests.java,**/*IT.java"
+          "-Dsonar.java.source=17"
+          "-Dsonar.java.target=17"
+          "-Dsonar.java.binaries=build/classes"
+          "-Dsonar.java.libraries=build/libs/**/*.jar"
           "-Dsonar.host.url=${SONAR_HOST_URL}"
           "-Dsonar.login=${SONAR_TOKEN}"
           "-Dsonar.qualitygate.wait=true"
         )
-
+        
+        # Add coverage path if the file exists
         if [ -f "${{ inputs.coverage-path }}" ]; then
-          PARAMS+=("-Dsonar.javascript.lcov.reportPaths=${{ inputs.coverage-path }}")
-          PARAMS+=("-Dsonar.typescript.lcov.reportPaths=${{ inputs.coverage-path }}")
-          echo "✓ Including coverage analysis"
+          PARAMS+=("-Dsonar.coverage.jacoco.xmlReportPaths=${{ inputs.coverage-path }}")
+          echo "✓ Including JaCoCo coverage analysis from: ${{ inputs.coverage-path }}"
         else
-          echo "ℹ Skipping coverage analysis (coverage file not found)"
+          echo "ℹ Skipping coverage analysis (JaCoCo report not found at: ${{ inputs.coverage-path }})"
+          echo "ℹ To generate coverage, run: ./gradlew test jacocoTestReport"
         fi
-
+        
         echo "SonarQube parameters:"
         for param in "${PARAMS[@]}"; do
           echo "  $param"
         done
-
+        
         sonar-scanner "${PARAMS[@]}"
         echo "✓ SonarQube analysis completed successfully!"
-
+        
     - name: SonarQube Analysis Summary
       shell: bash
       run: |
@@ -105,4 +114,6 @@ runs:
         echo "Key: ${{ inputs.project-key }}"
         echo "Version: ${{ inputs.docker-tag }}"
         echo "Branch: ${{ inputs.branch-name }}"
+        echo "Sources: ${{ inputs.sources-path }}"
+        echo "Coverage: ${{ inputs.coverage-path }}"
         echo "=============================="
