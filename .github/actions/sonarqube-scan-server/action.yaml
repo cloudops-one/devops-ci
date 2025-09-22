@@ -55,7 +55,7 @@ runs:
         echo "Sonar Host URL: '${{ inputs.sonar-host-url }}'"
         echo "Project Key: '${{ inputs.project-key }}'"
         echo "Project Name: '${{ inputs.project-name }}'"
-        echo "Token length: ${#{{ inputs.sonar-token }}}"
+        echo "Token length: ${{ inputs.sonar-token }}"
         echo "Branch: '${{ inputs.branch-name }}'"
         echo "Version: '${{ inputs.docker-tag }}'"
 
