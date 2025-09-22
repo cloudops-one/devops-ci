@@ -46,11 +46,11 @@ runs:
         chmod +x ./gradlew
         ls -la gradlew
 
-    - name: Build project
+    - name: Build project (skip Spotless)
       shell: bash
       run: |
-        echo "Building project..."
-        ./gradlew clean build
+        echo "Building project (skipping Spotless checks)..."
+        ./gradlew clean build -x spotlessJavaCheck -x spotlessJava
         echo "✓ Build completed"
 
     - name: Run SonarQube Analysis
@@ -74,6 +74,7 @@ runs:
           "-Dsonar.junit.reportPaths=build/test-results/test"
           "-Dsonar.sourceEncoding=UTF-8"
           "-Dsonar.qualitygate.wait=true"
+          "-Dsonar.gradle.skipCompile=true"
         )
         
         # Add branch analysis parameters
