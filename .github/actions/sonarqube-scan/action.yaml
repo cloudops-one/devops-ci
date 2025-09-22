@@ -1,12 +1,12 @@
 name: 'SonarQube Scan'
-description: 'Centralized SonarQube scanning for frontend (JS/TS) and backend (Java) projects'
+description: 'Centralized SonarQube code quality scanning'
 
 inputs:
   sonar-token:
     description: 'SonarQube token'
     required: true
   sonar-host-url:
-    description: 'SonarQube server URL'
+    description: 'SonarQube host URL'
     required: true
   project-key:
     description: 'SonarQube project key'
@@ -15,7 +15,7 @@ inputs:
     description: 'SonarQube project name'
     required: true
   docker-tag:
-    description: 'Project version (e.g., build number or tag)'
+    description: 'Docker tag for project version'
     required: true
   branch-name:
     description: 'Git branch name'
@@ -23,12 +23,11 @@ inputs:
   sources-path:
     description: 'Path to source code'
     default: 'src'
+    required: false
   coverage-path:
-    description: 'Coverage report path (auto-detected if empty)'
-    default: ''
-  java-version:
-    description: 'Java version (for backend projects)'
-    default: '17'
+    description: 'Path to coverage reports'
+    default: 'coverage/lcov.info'
+    required: false
 
 runs:
   using: 'composite'
@@ -38,29 +37,10 @@ runs:
       with:
         fetch-depth: 0
 
-    - name: Detect project type
-      id: detect
-      shell: bash
-      run: |
-        if [ -f "pom.xml" ]; then
-          echo "language=java" >> $GITHUB_OUTPUT
-          echo "build-tool=maven" >> $GITHUB_OUTPUT
-        elif [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
-          echo "language=java" >> $GITHUB_OUTPUT
-          echo "build-tool=gradle" >> $GITHUB_OUTPUT
-        elif [ -f "package.json" ]; then
-          echo "language=javascript" >> $GITHUB_OUTPUT
-          echo "build-tool=npm" >> $GITHUB_OUTPUT
-        else
-          echo "language=unknown" >> $GITHUB_OUTPUT
-          echo "build-tool=none" >> $GITHUB_OUTPUT
-        fi
-
-    - name: Set up environment
+    - name: Set up JDK for SonarScanner
       uses: cloudops-one/setup-java@v4
-      if: steps.detect.outputs.language == 'java'
       with:
-        java-version: ${{ inputs.java-version }}
+        java-version: '17'
         distribution: 'temurin'
 
     - name: Install SonarScanner
@@ -73,57 +53,38 @@ runs:
         SONAR_TOKEN: ${{ inputs.sonar-token }}
         SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
       run: |
-        echo "Running SonarQube analysis for ${{ steps.detect.outputs.language }} project..."
-
+        echo "Running SonarQube analysis..."
+        
+        # Build parameters array
         PARAMS=(
           "-Dsonar.projectKey=${{ inputs.project-key }}"
           "-Dsonar.projectName=${{ inputs.project-name }}"
           "-Dsonar.projectVersion=${{ inputs.docker-tag }}"
-          "-Dsonar.branch.name=${{ inputs.branch-name }}"
           "-Dsonar.sources=${{ inputs.sources-path }}"
-          "-Dsonar.host.url=${SONAR_HOST_URL}"
-          "-Dsonar.login=${SONAR_TOKEN}"
+          "-Dsonar.exclusions=**/node_modules/**,**/dist/**,**/coverage/**,**/*.d.ts"
+          "-Dsonar.tests=${{ inputs.sources-path }}"
+          "-Dsonar.test.inclusions=**/*.test.js,**/*.test.ts,**/*.spec.js,**/*.spec.ts"
           "-Dsonar.qualitygate.wait=true"
-          "-Dsonar.scm.provider=git"
         )
-
-        # Add language-specific params
-        case "${{ steps.detect.outputs.language }}" in
-          java)
-            PARAMS+=("-Dsonar.language=java")
-            PARAMS+=("-Dsonar.java.source=${{ inputs.java-version }}")
-            PARAMS+=("-Dsonar.java.binaries=build/classes")
-            PARAMS+=("-Dsonar.exclusions=**/node_modules/**,**/dist/**,**/coverage/**,**/target/**,**/*.d.ts")
-            PARAMS+=("-Dsonar.tests=${{ inputs.sources-path }}")
-            PARAMS+=("-Dsonar.test.inclusions=**/*Test.java,**/*Spec.java")
-
-            COVERAGE_PATH="${{ inputs.coverage-path }}"
-            if [ -z "$COVERAGE_PATH" ]; then
-              if [ "${{ steps.detect.outputs.build-tool }}" = "maven" ]; then
-                COVERAGE_PATH="target/site/jacoco/jacoco.xml"
-              else
-                COVERAGE_PATH="build/reports/jacoco/test/jacocoTestReport.xml"
-              fi
-            fi
-            [ -f "$COVERAGE_PATH" ] && PARAMS+=("-Dsonar.coverage.jacoco.xmlReportPaths=$COVERAGE_PATH")
-            ;;
-          
-          javascript|typescript)
-            PARAMS+=("-Dsonar.language=js")
-            PARAMS+=("-Dsonar.exclusions=**/node_modules/**,**/dist/**,**/coverage/**,**/*.d.ts")
-            PARAMS+=("-Dsonar.tests=${{ inputs.sources-path }}")
-            PARAMS+=("-Dsonar.test.inclusions=**/*.test.js,**/*.test.ts,**/*.spec.js,**/*.spec.ts")
-
-            COVERAGE_PATH="${{ inputs.coverage-path }}"
-            [ -z "$COVERAGE_PATH" ] && COVERAGE_PATH="coverage/lcov.info"
-            [ -f "$COVERAGE_PATH" ] && PARAMS+=("-Dsonar.javascript.lcov.reportPaths=$COVERAGE_PATH" "-Dsonar.typescript.lcov.reportPaths=$COVERAGE_PATH")
-            ;;
-        esac
-
+        
+        # Add coverage path if the file exists
+        if [ -f "${{ inputs.coverage-path }}" ]; then
+          PARAMS+=("-Dsonar.javascript.lcov.reportPaths=${{ inputs.coverage-path }}")
+          PARAMS+=("-Dsonar.typescript.lcov.reportPaths=${{ inputs.coverage-path }}")
+          echo "✓ Including coverage analysis"
+        else
+          echo "ℹ Skipping coverage analysis (coverage file not found)"
+        fi
+        
         echo "SonarQube parameters:"
-        printf '%s\n' "${PARAMS[@]}"
-
+        for param in "${PARAMS[@]}"; do
+          echo "  $param"
+        done
+        
+        # Run SonarScanner
         sonar-scanner "${PARAMS[@]}"
+        
+        echo "✓ SonarQube analysis completed successfully!"
 
     - name: SonarQube Analysis Summary
       shell: bash
@@ -133,8 +94,4 @@ runs:
         echo "Key: ${{ inputs.project-key }}"
         echo "Version: ${{ inputs.docker-tag }}"
         echo "Branch: ${{ inputs.branch-name }}"
-        echo "Language: ${{ steps.detect.outputs.language }}"
-        echo "Build Tool: ${{ steps.detect.outputs.build-tool }}"
-        echo "Sources Path: ${{ inputs.sources-path }}"
-        echo "Coverage Path: ${{ inputs.coverage-path || 'auto-detected' }}"
-        echo "Status: ✅ Completed (check SonarQube dashboard for details)"
+        echo "=============================="
