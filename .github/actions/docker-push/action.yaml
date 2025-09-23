@@ -10,13 +10,13 @@ inputs:
     required: true
   harbor_registry:
     description: 'Harbor registry URL'
-    required: false
+    required: true
   harbor_username:
     description: 'Harbor username'
-    required: false
+    required: true
   harbor_password:
     description: 'Harbor password'
-    required: false
+    required: true
 
 runs:
   using: "composite"
@@ -24,22 +24,22 @@ runs:
     - name: Verify Harbor credentials
       shell: bash
       run: |
-        if [ -z "${{ inputs.harbor_registry || secrets.HARBOR_REGISTRY }}" ]; then
+        if [ -z "${{ inputs.harbor_registry }}" ]; then
           echo "❌ HARBOR_REGISTRY is not set"
           exit 1
         fi
-        if [ -z "${{ inputs.harbor_username || secrets.HARBOR_USERNAME }}" ]; then
+        if [ -z "${{ inputs.harbor_username }}" ]; then
           echo "❌ HARBOR_USERNAME is not set"
           exit 1
         fi
-        if [ -z "${{ inputs.harbor_password || secrets.HARBOR_PASSWORD }}" ]; then
+        if [ -z "${{ inputs.harbor_password }}" ]; then
           echo "❌ HARBOR_PASSWORD is not set"
           exit 1
         fi
         echo "✅ All Harbor credentials are configured"
 
     - name: Download Docker image
-      uses: cloudops-one/download-artifact@v4
+      uses: actions/download-artifact@v4
       with:
         name: docker-image
         path: .
@@ -54,9 +54,9 @@ runs:
     - name: Login to Harbor Registry
       shell: bash
       run: |
-        HARBOR_REG="${{ inputs.harbor_registry || secrets.HARBOR_REGISTRY }}"
-        HARBOR_USER="${{ inputs.harbor_username || secrets.HARBOR_USERNAME }}"
-        HARBOR_PASS="${{ inputs.harbor_password || secrets.HARBOR_PASSWORD }}"
+        HARBOR_REG="${{ inputs.harbor_registry }}"
+        HARBOR_USER="${{ inputs.harbor_username }}"
+        HARBOR_PASS="${{ inputs.harbor_password }}"
         
         echo "🔐 Logging into Harbor registry: $HARBOR_REG"
         echo "$HARBOR_PASS" | docker login $HARBOR_REG --username $HARBOR_USER --password-stdin
@@ -66,7 +66,7 @@ runs:
       run: |
         IMAGE_NAME="${{ inputs.image_name }}"
         DOCKER_TAG="${{ inputs.docker_tag }}"
-        HARBOR_REG="${{ inputs.harbor_registry || secrets.HARBOR_REGISTRY }}"
+        HARBOR_REG="${{ inputs.harbor_registry }}"
         
         LOCAL_IMAGE="$IMAGE_NAME:$DOCKER_TAG"
         REMOTE_IMAGE="$HARBOR_REG/$IMAGE_NAME:$DOCKER_TAG"
@@ -85,5 +85,5 @@ runs:
       if: always()
       shell: bash
       run: |
-        HARBOR_REG="${{ inputs.harbor_registry || secrets.HARBOR_REGISTRY }}"
+        HARBOR_REG="${{ inputs.harbor_registry }}"
         docker logout $HARBOR_REG || echo "Logout failed or already logged out"
