@@ -39,7 +39,7 @@ runs:
         echo "✅ All Harbor credentials are configured"
 
     - name: Download Docker image
-      uses: actions/download-artifact@v4
+      uses: cloudops-one/download-artifact@v4
       with:
         name: docker-image
         path: .
