@@ -1,43 +1,51 @@
-name: Deploy Kubernetes Apps
-
-description: Centralized deployment action for all apps (admin, server, website)
+name: k8s-deployment
+description: Deploy admin, server, and website to Kubernetes
 
 inputs:
   namespace:
-    description: 'Namespace to deploy into'
     required: true
+    description: Target namespace
+  kubeconfig:
+    required: true
+    description: Kubeconfig content
   admin-image:
-    description: 'Docker image for Admin app'
     required: true
+    description: Docker image for admin
   server-image:
-    description: 'Docker image for Server app'
     required: true
+    description: Docker image for server
   website-image:
-    description: 'Docker image for Website app'
     required: true
+    description: Docker image for website
 
 runs:
   using: "composite"
   steps:
-    - name: Set Kubeconfig
+    - name: Setup Kubeconfig
       run: |
-        echo "${{ secrets.KUBECONFIG }}" > kubeconfig
-        export KUBECONFIG=$PWD/kubeconfig
+        echo "${{ inputs.kubeconfig }}" > kubeconfig.yaml
+        export KUBECONFIG=$(pwd)/kubeconfig.yaml
+      shell: bash
+
+    - name: Create namespace if not exists
+      run: |
+        kubectl get ns ${{ inputs.namespace }} || kubectl create ns ${{ inputs.namespace }}
+      shell: bash
 
     - name: Deploy Admin
       run: |
-        echo "Deploying Admin to namespace: ${{ inputs.namespace }}"
-        kubectl -n ${{ inputs.namespace }} set image deployment/admin admin=${{ inputs.admin-image }} --record
-        kubectl -n ${{ inputs.namespace }} rollout status deployment/admin
+        kubectl set image deployment/irai-yoga-v1-admin ${{ inputs.namespace }} ${{ inputs.admin-image }} -n ${{ inputs.namespace }} || \
+        kubectl apply -f ./k8s/admin-deployment.yaml -n ${{ inputs.namespace }}
+      shell: bash
 
     - name: Deploy Server
       run: |
-        echo "Deploying Server to namespace: ${{ inputs.namespace }}"
-        kubectl -n ${{ inputs.namespace }} set image deployment/server server=${{ inputs.server-image }} --record
-        kubectl -n ${{ inputs.namespace }} rollout status deployment/server
+        kubectl set image deployment/irai-yoga-v1-server ${{ inputs.namespace }} ${{ inputs.server-image }} -n ${{ inputs.namespace }} || \
+        kubectl apply -f ./k8s/server-deployment.yaml -n ${{ inputs.namespace }}
+      shell: bash
 
     - name: Deploy Website
       run: |
-        echo "Deploying Website to namespace: ${{ inputs.namespace }}"
-        kubectl -n ${{ inputs.namespace }} set image deployment/website website=${{ inputs.website-image }} --record
-        kubectl -n ${{ inputs.namespace }} rollout status deployment/website
+        kubectl set image deployment/irai-yoga-v1-website ${{ inputs.namespace }} ${{ inputs.website-image }} -n ${{ inputs.namespace }} || \
+        kubectl apply -f ./k8s/website-deployment.yaml -n ${{ inputs.namespace }}
+      shell: bash
