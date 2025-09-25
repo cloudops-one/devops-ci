@@ -7,7 +7,7 @@ inputs:
     description: Target namespace
   kubeconfig:
     required: true
-    description: Kubeconfig content
+    description: Full kubeconfig content
   admin-image:
     required: true
     description: Docker image for admin
@@ -34,18 +34,27 @@ runs:
 
     - name: Deploy Admin
       run: |
-        kubectl set image deployment/irai-yoga-v1-admin ${{ inputs.namespace }} ${{ inputs.admin-image }} -n ${{ inputs.namespace }} || \
-        kubectl apply -f ./k8s/admin-deployment.yaml -n ${{ inputs.namespace }}
+        if kubectl get deployment irai-yoga-v1-admin -n ${{ inputs.namespace }} > /dev/null 2>&1; then
+          kubectl set image deployment/irai-yoga-v1-admin admin=${{ inputs.admin-image }} -n ${{ inputs.namespace }}
+        else
+          kubectl apply -f ./k8s/admin-deployment.yaml -n ${{ inputs.namespace }}
+        fi
       shell: bash
 
     - name: Deploy Server
       run: |
-        kubectl set image deployment/irai-yoga-v1-server ${{ inputs.namespace }} ${{ inputs.server-image }} -n ${{ inputs.namespace }} || \
-        kubectl apply -f ./k8s/server-deployment.yaml -n ${{ inputs.namespace }}
+        if kubectl get deployment irai-yoga-v1-server -n ${{ inputs.namespace }} > /dev/null 2>&1; then
+          kubectl set image deployment/irai-yoga-v1-server server=${{ inputs.server-image }} -n ${{ inputs.namespace }}
+        else
+          kubectl apply -f ./k8s/server-deployment.yaml -n ${{ inputs.namespace }}
+        fi
       shell: bash
 
     - name: Deploy Website
       run: |
-        kubectl set image deployment/irai-yoga-v1-website ${{ inputs.namespace }} ${{ inputs.website-image }} -n ${{ inputs.namespace }} || \
-        kubectl apply -f ./k8s/website-deployment.yaml -n ${{ inputs.namespace }}
+        if kubectl get deployment irai-yoga-v1-website -n ${{ inputs.namespace }} > /dev/null 2>&1; then
+          kubectl set image deployment/irai-yoga-v1-website website=${{ inputs.website-image }} -n ${{ inputs.namespace }}
+        else
+          kubectl apply -f ./k8s/website-deployment.yaml -n ${{ inputs.namespace }}
+        fi
       shell: bash
