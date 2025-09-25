@@ -1,159 +1,64 @@
-name: Centralized K8s Deployment
+name: "K8s Multi-App Deployment"
+description: "Centralized deployment action for multiple apps in a namespace based on environment"
 
-on:
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Target environment'
-        required: true
-        default: 'preview'
-        type: choice
-        options:
-        - preview
-        - stage
-        - production
-      image-tag:
-        description: 'Docker image tag'
-        required: true
-        default: 'latest'
-      namespace:
-        description: 'Kubernetes namespace'
-        required: false
-      deployment-name:
-        description: 'Kubernetes deployment name'
-        required: false
+inputs:
+  branch:
+    required: true
+  environment:
+    required: true
+  admin-image:
+    required: true
+  server-image:
+    required: true
+  website-image:
+    required: true
 
-on:
-  push:
-    branches: ['**']
-    tags: ['v*', '*.*.*']
+runs:
+  using: "composite"
+  steps:
 
-env:
-  REGISTRY_URL: '${{ secrets.HARBOR_REGISTRY }}'
-
-jobs:
-  determine-variables:
-    runs-on: ubuntu-latest
-    outputs:
-      environment: ${{ steps.vars.outputs.environment }}
-      docker_tag: ${{ steps.vars.outputs.docker_tag }}
-      namespace: ${{ steps.vars.outputs.namespace }}
-      deployment_name: ${{ steps.vars.outputs.deployment_name }}
-      full_image: ${{ steps.vars.outputs.full_image }}
-      project_name: ${{ steps.vars.outputs.project_name }}
-      component: ${{ steps.vars.outputs.component }}
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Extract project name from repository
-      id: project
+    # 1️⃣ Setup kubeconfig
+    - name: Setup Kubeconfig
       run: |
-        # Extract project name from repository (customize this logic as needed)
-        PROJECT_NAME=$(echo "$GITHUB_REPOSITORY" | cut -d'/' -f2 | sed 's/-k8s//g' | sed 's/-deploy//g')
-        echo "project_name=$PROJECT_NAME" >> $GITHUB_OUTPUT
-        echo "component=app" >> $GITHUB_OUTPUT
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBE_CONFIG }}" > $HOME/.kube/config
 
-    - name: Determine deployment parameters
-      id: vars
+    # 2️⃣ Map environment to namespace
+    - name: Map Environment to Namespace
+      id: env
       run: |
-        PROJECT_NAME="${{ steps.project.outputs.project_name }}"
-        COMPONENT="${{ steps.project.outputs.component }}"
-        
-        if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-          echo "environment=production" >> $GITHUB_OUTPUT
-          TAG="${GITHUB_REF#refs/tags/}"
-          echo "docker_tag=$TAG" >> $GITHUB_OUTPUT
-          echo "namespace=$PROJECT_NAME-prod" >> $GITHUB_OUTPUT
-          echo "deployment_name=$PROJECT_NAME-$COMPONENT" >> $GITHUB_OUTPUT
-        elif [[ "$GITHUB_REF" == refs/heads/main ]]; then
-          echo "environment=stage" >> $GITHUB_OUTPUT
-          echo "docker_tag=stage" >> $GITHUB_OUTPUT
-          echo "namespace=$PROJECT_NAME-stage" >> $GITHUB_OUTPUT
-          echo "deployment_name=$PROJECT_NAME-$COMPONENT" >> $GITHUB_OUTPUT
-        else
-          echo "environment=preview" >> $GITHUB_OUTPUT
-          BRANCH_NAME="${GITHUB_REF#refs/heads/}"
-          SANITIZED_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]')
-          echo "docker_tag=$SANITIZED_BRANCH" >> $GITHUB_OUTPUT
-          echo "namespace=$PROJECT_NAME-preview" >> $GITHUB_OUTPUT
-          echo "deployment_name=$PROJECT_NAME-$COMPONENT-$SANITIZED_BRANCH" >> $GITHUB_OUTPUT
-        fi
-        
-        echo "full_image=$REGISTRY_URL/$PROJECT_NAME/$COMPONENT:${{ steps.vars.outputs.docker_tag }}" >> $GITHUB_OUTPUT
-        echo "project_name=$PROJECT_NAME" >> $GITHUB_OUTPUT
-        echo "component=$COMPONENT" >> $GITHUB_OUTPUT
+        case "${{ inputs.environment }}" in
+          preview) echo "namespace=preview" >> $GITHUB_OUTPUT ;;
+          stage) echo "namespace=stage" >> $GITHUB_OUTPUT ;;
+          live) echo "namespace=live" >> $GITHUB_OUTPUT ;;
+          *) echo "namespace=dev" >> $GITHUB_OUTPUT ;;
+        esac
 
-  deploy:
-    runs-on: ubuntu-latest
-    needs: determine-variables
-    environment: 
-      name: ${{ needs.determine-variables.outputs.environment }}
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Configure kubectl
-      uses: azure/setup-kubectl@v3
-      with:
-        version: 'v1.28.0'
-
-    - name: Set up Kubernetes context
+    # 3️⃣ Ensure namespace exists
+    - name: Ensure Namespace Exists
       run: |
-        echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig.yaml
-        export KUBECONFIG=kubeconfig.yaml
-        
-        kubectl config current-context
-        kubectl get nodes
+        kubectl create namespace ${{ steps.env.outputs.namespace }} --dry-run=client -o yaml | kubectl apply -f -
 
-    - name: Validate namespace and deployment
+    # 4️⃣ Deploy Admin Page
+    - name: Deploy Admin
       run: |
-        echo "Project: ${{ needs.determine-variables.outputs.project_name }}"
-        echo "Component: ${{ needs.determine-variables.outputs.component }}"
-        echo "Environment: ${{ needs.determine-variables.outputs.environment }}"
-        echo "Namespace: ${{ needs.determine-variables.outputs.namespace }}"
-        echo "Deployment: ${{ needs.determine-variables.outputs.deployment_name }}"
-        echo "Image: ${{ needs.determine-variables.outputs.full_image }}"
+        kubectl set image deployment/admin \
+          admin=${{ inputs.admin-image }} \
+          -n ${{ steps.env.outputs.namespace }} \
+          || kubectl apply -f k8s/admin/ -n ${{ steps.env.outputs.namespace }}
 
-    - name: Ensure namespace exists
+    # 5️⃣ Deploy Server Page
+    - name: Deploy Server
       run: |
-        if ! kubectl get namespace ${{ needs.determine-variables.outputs.namespace }} > /dev/null 2>&1; then
-          echo "Creating namespace: ${{ needs.determine-variables.outputs.namespace }}"
-          kubectl create namespace ${{ needs.determine-variables.outputs.namespace }}
-        else
-          echo "Namespace already exists: ${{ needs.determine-variables.outputs.namespace }}"
-        fi
+        kubectl set image deployment/server \
+          server=${{ inputs.server-image }} \
+          -n ${{ steps.env.outputs.namespace }} \
+          || kubectl apply -f k8s/server/ -n ${{ steps.env.outputs.namespace }}
 
-    - name: Deploy to Kubernetes
-      uses: Azure/k8s-deploy@v4
-      with:
-        action: deploy
-        namespace: ${{ needs.determine-variables.outputs.namespace }}
-        manifests: |
-          manifests/deployment.yaml
-          manifests/service.yaml
-          manifests/ingress.yaml
-        images: |
-          ${{ needs.determine-variables.outputs.full_image }}
-        kubectl-version: 'v1.28.0'
-
-    - name: Verify deployment
+    # 6️⃣ Deploy Website Page
+    - name: Deploy Website
       run: |
-        kubectl get deployment ${{ needs.determine-variables.outputs.deployment_name }} \
-          -n ${{ needs.determine-variables.outputs.namespace }} \
-          -o wide
-        
-        kubectl rollout status deployment/${{ needs.determine-variables.outputs.deployment_name }} \
-          -n ${{ needs.determine-variables.outputs.namespace }} \
-          --timeout=300s
-
-    - name: Show deployment info
-      run: |
-        echo "✅ Deployment completed successfully!"
-        echo "📦 Project: ${{ needs.determine-variables.outputs.project_name }}"
-        echo "⚙️  Component: ${{ needs.determine-variables.outputs.component }}"
-        echo "🌍 Environment: ${{ needs.determine-variables.outputs.environment }}"
-        echo "📁 Namespace: ${{ needs.determine-variables.outputs.namespace }}"
-        echo "🚀 Deployment: ${{ needs.determine-variables.outputs.deployment_name }}"
-        echo "🐳 Image: ${{ needs.determine-variables.outputs.full_image }}"
+        kubectl set image deployment/website \
+          website=${{ inputs.website-image }} \
+          -n ${{ steps.env.outputs.namespace }} \
+          || kubectl apply -f k8s/website/ -n ${{ steps.env.outputs.namespace }}
