@@ -1,64 +1,43 @@
-name: "K8s Multi-App Deployment"
-description: "Centralized deployment action for multiple apps in a namespace based on environment"
+name: Deploy Kubernetes Apps
+
+description: Centralized deployment action for all apps (admin, server, website)
 
 inputs:
-  branch:
-    required: true
-  environment:
+  namespace:
+    description: 'Namespace to deploy into'
     required: true
   admin-image:
+    description: 'Docker image for Admin app'
     required: true
   server-image:
+    description: 'Docker image for Server app'
     required: true
   website-image:
+    description: 'Docker image for Website app'
     required: true
 
 runs:
   using: "composite"
   steps:
-
-    # 1️⃣ Setup kubeconfig
-    - name: Setup Kubeconfig
+    - name: Set Kubeconfig
       run: |
-        mkdir -p $HOME/.kube
-        echo "${{ secrets.KUBE_CONFIG }}" > $HOME/.kube/config
+        echo "${{ secrets.KUBECONFIG }}" > kubeconfig
+        export KUBECONFIG=$PWD/kubeconfig
 
-    # 2️⃣ Map environment to namespace
-    - name: Map Environment to Namespace
-      id: env
-      run: |
-        case "${{ inputs.environment }}" in
-          preview) echo "namespace=preview" >> $GITHUB_OUTPUT ;;
-          stage) echo "namespace=stage" >> $GITHUB_OUTPUT ;;
-          live) echo "namespace=live" >> $GITHUB_OUTPUT ;;
-          *) echo "namespace=dev" >> $GITHUB_OUTPUT ;;
-        esac
-
-    # 3️⃣ Ensure namespace exists
-    - name: Ensure Namespace Exists
-      run: |
-        kubectl create namespace ${{ steps.env.outputs.namespace }} --dry-run=client -o yaml | kubectl apply -f -
-
-    # 4️⃣ Deploy Admin Page
     - name: Deploy Admin
       run: |
-        kubectl set image deployment/admin \
-          admin=${{ inputs.admin-image }} \
-          -n ${{ steps.env.outputs.namespace }} \
-          || kubectl apply -f k8s/admin/ -n ${{ steps.env.outputs.namespace }}
+        echo "Deploying Admin to namespace: ${{ inputs.namespace }}"
+        kubectl -n ${{ inputs.namespace }} set image deployment/admin admin=${{ inputs.admin-image }} --record
+        kubectl -n ${{ inputs.namespace }} rollout status deployment/admin
 
-    # 5️⃣ Deploy Server Page
     - name: Deploy Server
       run: |
-        kubectl set image deployment/server \
-          server=${{ inputs.server-image }} \
-          -n ${{ steps.env.outputs.namespace }} \
-          || kubectl apply -f k8s/server/ -n ${{ steps.env.outputs.namespace }}
+        echo "Deploying Server to namespace: ${{ inputs.namespace }}"
+        kubectl -n ${{ inputs.namespace }} set image deployment/server server=${{ inputs.server-image }} --record
+        kubectl -n ${{ inputs.namespace }} rollout status deployment/server
 
-    # 6️⃣ Deploy Website Page
     - name: Deploy Website
       run: |
-        kubectl set image deployment/website \
-          website=${{ inputs.website-image }} \
-          -n ${{ steps.env.outputs.namespace }} \
-          || kubectl apply -f k8s/website/ -n ${{ steps.env.outputs.namespace }}
+        echo "Deploying Website to namespace: ${{ inputs.namespace }}"
+        kubectl -n ${{ inputs.namespace }} set image deployment/website website=${{ inputs.website-image }} --record
+        kubectl -n ${{ inputs.namespace }} rollout status deployment/website
