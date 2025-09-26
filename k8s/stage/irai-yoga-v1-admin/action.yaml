@@ -11,15 +11,15 @@ inputs:
   namespace:
     description: "Kubernetes namespace"
     required: true
-    default: "irai-yoga-v1-live"
+    default: "irai-yoga-v1-stage"
   deployment-name:
     description: "Deployment name"
     required: true
-    default: "irai-yoga-v1-admin-live"
+    default: "irai-yoga-v1-admin-stage"
   container-name:
     description: "Container name in the deployment"
     required: true
-    default: "irai-yoga-v1-admin-live"
+    default: "irai-yoga-v1-admin-stage"
   image:
     description: "Docker image with tag"
     required: true
