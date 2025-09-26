@@ -93,7 +93,7 @@ runs:
     - name: Setup Harbor registry secret
       shell: bash
       run: |
-        SECRET_NAME="harbor-registry-secret"
+        SECRET_NAME="harbor-secret"
         echo "Setting up Harbor registry secret..."
         
         if ! kubectl get secret $SECRET_NAME -n ${{ inputs.namespace }} >/dev/null 2>&1; then
@@ -163,7 +163,7 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 5
       imagePullSecrets:
-        - name: harbor-registry-secret
+        - name: harbor-secret
 EOF
         echo "✅ Deployment manifest generated"
 
