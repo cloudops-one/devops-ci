@@ -6,7 +6,6 @@ inputs:
   do-token:
     description: 'DigitalOcean API token'
     required: true
-    default: ${{ secrets.DO_API_TOKEN }}
   cluster-name:
     description: 'DigitalOcean Kubernetes cluster name'
     required: true
