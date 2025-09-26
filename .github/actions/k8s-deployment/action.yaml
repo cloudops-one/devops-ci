@@ -1,5 +1,5 @@
-name: 'Kubernetes Deployment Only'
-description: 'Deploy Kubernetes Deployment only (assumes existing Service/Ingress)'
+name: 'Kubernetes Deployment'
+description: 'Deploy application to Kubernetes cluster'
 inputs:
   kubeconfig:
     description: 'Kubeconfig content'
@@ -8,7 +8,7 @@ inputs:
     description: 'Target environment'
     required: true
   cluster-name:
-    description: 'Cluster name (for logging)'
+    description: 'Cluster name'
     required: true
   project-name:
     description: 'Project name'
@@ -30,8 +30,7 @@ inputs:
     required: true
   namespace:
     description: 'Kubernetes namespace'
-    required: false
-    default: 'irai-yoga-v1-live'
+    required: true
   replicas:
     description: 'Number of replicas'
     required: false
@@ -40,27 +39,11 @@ inputs:
     description: 'Container port'
     required: false
     default: '80'
-  cpu-limit:
-    description: 'CPU limit'
-    required: false
-    default: '2'
-  cpu-request:
-    description: 'CPU request'
-    required: false
-    default: '1'
-  memory-limit:
-    description: 'Memory limit'
-    required: false
-    default: '2Gi'
-  memory-request:
-    description: 'Memory request'
-    required: false
-    default: '1Gi'
 
 runs:
   using: "composite"
   steps:
-    - name: Setup Kubernetes configuration
+    - name: Setup kubectl configuration
       shell: bash
       run: |
         echo "Setting up kubectl configuration..."
@@ -70,48 +53,37 @@ runs:
         
         echo "✅ Kubectl configured successfully"
         kubectl version --client
-        echo "Cluster info:"
         kubectl cluster-info
 
-    - name: Validate namespace and existing resources
+    - name: Validate namespace exists
       shell: bash
       run: |
-        echo "Checking namespace: ${{ inputs.namespace }}"
-        if ! kubectl get namespace ${{ inputs.namespace }} >/dev/null 2>&1; then
+        if kubectl get namespace ${{ inputs.namespace }} >/dev/null 2>&1; then
+          echo "✅ Namespace ${{ inputs.namespace }} exists"
+        else
           echo "❌ Error: Namespace ${{ inputs.namespace }} does not exist"
           kubectl get namespaces
           exit 1
         fi
-        
-        echo "✅ Namespace ${{ inputs.namespace }} exists"
-        echo "Existing Services in namespace:"
-        kubectl get svc -n ${{ inputs.namespace }} || echo "No services found"
-        
-        echo "Existing Ingress in namespace:"
-        kubectl get ingress -n ${{ inputs.namespace }} || echo "No ingress found"
 
     - name: Setup Harbor registry secret
       shell: bash
       run: |
         SECRET_NAME="harbor-secret"
-        echo "Setting up Harbor registry secret..."
-        
         if ! kubectl get secret $SECRET_NAME -n ${{ inputs.namespace }} >/dev/null 2>&1; then
-          echo "Creating new Harbor registry secret..."
           kubectl create secret docker-registry $SECRET_NAME \
             --docker-server=${{ inputs.harbor-registry }} \
             --docker-username=${{ inputs.harbor-username }} \
             --docker-password=${{ inputs.harbor-password }} \
             --namespace=${{ inputs.namespace }}
-          echo "✅ Created $SECRET_NAME in ${{ inputs.namespace }} namespace"
+          echo "✅ Created harbor-registry-secret"
         else
-          echo "✅ $SECRET_NAME already exists in ${{ inputs.namespace }} namespace"
+          echo "✅ harbor-registry-secret already exists"
         fi
 
-    - name: Generate deployment manifest only
+    - name: Create deployment manifest
       shell: bash
       run: |
-        echo "Generating deployment manifest..."
         cat > deployment.yaml << EOF
 apiVersion: apps/v1
 kind: Deployment
@@ -122,7 +94,6 @@ metadata:
     app: ${{ inputs.project-name }}-${{ inputs.component }}
     environment: ${{ inputs.environment }}
     version: "${{ inputs.docker-tag }}"
-    managed-by: github-actions
 spec:
   replicas: ${{ inputs.replicas }}
   selector:
@@ -143,11 +114,11 @@ spec:
             - containerPort: ${{ inputs.container-port }}
           resources:
             limits:
-              cpu: "${{ inputs.cpu-limit }}"
-              memory: "${{ inputs.memory-limit }}"
+              cpu: "2"
+              memory: 2Gi
             requests:
-              cpu: "${{ inputs.cpu-request }}"
-              memory: "${{ inputs.memory-request }}"
+              cpu: "1"
+              memory: 1Gi
           securityContext:
             allowPrivilegeEscalation: false
           livenessProbe:
@@ -165,64 +136,39 @@ spec:
       imagePullSecrets:
         - name: harbor-secret
 EOF
-        echo "✅ Deployment manifest generated"
 
     - name: Apply deployment
       shell: bash
       run: |
-        echo "Applying deployment to namespace: ${{ inputs.namespace }}"
         kubectl apply -f deployment.yaml
         echo "✅ Deployment applied successfully"
 
     - name: Wait for deployment rollout
       shell: bash
       run: |
-        echo "⏳ Waiting for deployment rollout..."
         kubectl rollout status deployment/${{ inputs.project-name }}-${{ inputs.component }} \
           -n ${{ inputs.namespace }} \
-          --timeout=600s
+          --timeout=300s
         echo "✅ Deployment rollout completed"
 
     - name: Verify deployment status
       shell: bash
       run: |
-        echo "=== Deployment Verification ==="
-        
-        echo "1. Deployment Status:"
+        echo "=== Deployment Status ==="
         kubectl get deployment/${{ inputs.project-name }}-${{ inputs.component }} \
           -n ${{ inputs.namespace }} -o wide
-        
-        echo "2. Pods Status:"
+
+        echo "=== Pods Status ==="
         kubectl get pods -n ${{ inputs.namespace }} \
           -l app=${{ inputs.project-name }}-${{ inputs.component }} -o wide
-        
-        echo "3. Current Image:"
-        CURRENT_IMAGE=$(kubectl get deployment/${{ inputs.project-name }}-${{ inputs.component }} \
-          -n ${{ inputs.namespace }} \
-          -o jsonpath='{.spec.template.spec.containers[0].image}')
-        echo "Image: $CURRENT_IMAGE"
 
     - name: Restart deployment to ensure latest image
       shell: bash
       run: |
-        echo "🔄 Ensuring latest image is running..."
         kubectl rollout restart deployment/${{ inputs.project-name }}-${{ inputs.component }} \
           -n ${{ inputs.namespace }}
-        
-        echo "⏳ Waiting for restart to complete..."
+        echo "✅ Deployment restart triggered"
+
         kubectl rollout status deployment/${{ inputs.project-name }}-${{ inputs.component }} \
           -n ${{ inputs.namespace }} \
           --timeout=300s
-        echo "✅ Restart completed"
-
-    - name: Final status check
-      shell: bash
-      run: |
-        echo "=== Final Status ==="
-        kubectl get deployment,pods -n ${{ inputs.namespace }} -l app=${{ inputs.project-name }}-${{ inputs.component }}
-        
-        echo "✅ Deployment to ${{ inputs.namespace }} completed successfully!"
-        echo "📦 Image: ${{ inputs.harbor-registry }}/portal-irai-yoga/admin:${{ inputs.docker-tag }}"
-        echo "🏷️  Version: ${{ inputs.docker-tag }}"
-        echo "🌍 Environment: ${{ inputs.environment }}"
-        echo "🚀 Service/Ingress: Pre-configured (not modified)"
