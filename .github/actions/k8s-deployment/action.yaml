@@ -49,9 +49,7 @@ runs:
       run: |
         echo "Setting up kubectl configuration..."
         mkdir -p ~/.kube
-        cat << EOF > ~/.kube/config
-        ${{ inputs.kubeconfig }}
-        EOF
+        echo "${{ inputs.kubeconfig }}" > ~/.kube/config
         chmod 600 ~/.kube/config
         
         echo "✅ Kubectl configured successfully"
@@ -72,7 +70,7 @@ runs:
     - name: Setup Harbor registry secret
       shell: bash
       run: |
-        SECRET_NAME="harbor-secret"
+        SECRET_NAME="harbor-registry-secret"
         if ! kubectl get secret $SECRET_NAME -n ${{ inputs.namespace }} >/dev/null 2>&1; then
           kubectl create secret docker-registry $SECRET_NAME \
             --docker-server=${{ inputs.harbor-registry }} \
@@ -137,7 +135,7 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 5
       imagePullSecrets:
-        - name: harbor-secret
+        - name: harbor-registry-secret
 EOF
 
     - name: Apply deployment
