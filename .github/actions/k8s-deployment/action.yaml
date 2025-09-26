@@ -1,69 +1,60 @@
-name: k8s-deployment
-description: Deploy admin, server, and website to Kubernetes
+name: "Kubernetes Deployment"
+description: "Deploys applications to Kubernetes cluster"
 
 inputs:
   namespace:
+    description: "Kubernetes namespace"
     required: true
-    description: Target namespace
   kubeconfig:
+    description: "Kubeconfig file content"
     required: true
-    description: Full kubeconfig content
   admin-image:
+    description: "Admin Docker image"
     required: true
-    description: Docker image for admin
   server-image:
+    description: "Server Docker image"
     required: true
-    description: Docker image for server
   website-image:
+    description: "Website Docker image"
     required: true
-    description: Docker image for website
 
 runs:
   using: "composite"
   steps:
     - name: Install kubectl
       run: |
-        curl -LO "https://dl.k8s.io/release/$(curl -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+        KUBECTL_VERSION=$(curl -s https://dl.k8s.io/release/stable.txt)
+        curl -LO "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl"
         chmod +x kubectl
         sudo mv kubectl /usr/local/bin/
         kubectl version --client
       shell: bash
 
-    - name: Setup Kubeconfig
+    - name: Configure Kubeconfig
       run: |
         echo "${{ inputs.kubeconfig }}" > kubeconfig.yaml
-        export KUBECONFIG=$(pwd)/kubeconfig.yaml
-        kubectl config view
+        export KUBECONFIG=$PWD/kubeconfig.yaml
       shell: bash
 
-    - name: Create namespace if not exists
+    - name: Ensure Namespace Exists
       run: |
         kubectl get ns ${{ inputs.namespace }} || kubectl create ns ${{ inputs.namespace }}
       shell: bash
 
     - name: Deploy Admin
       run: |
-        if kubectl get deployment irai-yoga-v1-admin -n ${{ inputs.namespace }} > /dev/null 2>&1; then
-          kubectl set image deployment/irai-yoga-v1-admin admin=${{ inputs.admin-image }} -n ${{ inputs.namespace }}
-        else
-          kubectl apply -f ./k8s/admin-deployment.yaml -n ${{ inputs.namespace }}
-        fi
+        kubectl -n ${{ inputs.namespace }} set image deployment/irai-yoga-admin admin=${{ inputs.admin-image }} --record || \
+        kubectl -n ${{ inputs.namespace }} create deployment irai-yoga-admin --image=${{ inputs.admin-image }}
       shell: bash
 
     - name: Deploy Server
       run: |
-        if kubectl get deployment irai-yoga-v1-server -n ${{ inputs.namespace }} > /dev/null 2>&1; then
-          kubectl set image deployment/irai-yoga-v1-server server=${{ inputs.server-image }} -n ${{ inputs.namespace }}
-        else
-          kubectl apply -f ./k8s/server-deployment.yaml -n ${{ inputs.namespace }}
-        fi
+        kubectl -n ${{ inputs.namespace }} set image deployment/irai-yoga-server server=${{ inputs.server-image }} --record || \
+        kubectl -n ${{ inputs.namespace }} create deployment irai-yoga-server --image=${{ inputs.server-image }}
       shell: bash
 
     - name: Deploy Website
       run: |
-        if kubectl get deployment irai-yoga-v1-website -n ${{ inputs.namespace }} > /dev/null 2>&1; then
-          kubectl set image deployment/irai-yoga-v1-website website=${{ inputs.website-image }} -n ${{ inputs.namespace }}
-        else
-          kubectl apply -f ./k8s/website-deployment.yaml -n ${{ inputs.namespace }}
-        fi
+        kubectl -n ${{ inputs.namespace }} set image deployment/irai-yoga-website website=${{ inputs.website-image }} --record || \
+        kubectl -n ${{ inputs.namespace }} create deployment irai-yoga-website --image=${{ inputs.website-image }}
       shell: bash
