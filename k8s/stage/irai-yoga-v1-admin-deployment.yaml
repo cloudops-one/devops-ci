@@ -1,0 +1,85 @@
+name: Deploy to Kubernetes
+description: "Create or update Deployment in DigitalOcean Kubernetes cluster"
+
+inputs:
+  do-token:
+    description: "DigitalOcean API token"
+    required: true
+  cluster-name:
+    description: "DigitalOcean Kubernetes cluster name"
+    required: true
+  namespace:
+    description: "Kubernetes namespace"
+    required: true
+    default: "irai-yoga-v1-live"
+  deployment-name:
+    description: "Deployment name"
+    required: true
+    default: "irai-yoga-v1-admin-live"
+  container-name:
+    description: "Container name in the deployment"
+    required: true
+    default: "irai-yoga-v1-admin-live"
+  image:
+    description: "Docker image with tag"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up doctl
+      uses: cloudops-one/action-doctl@v2
+      with:
+        token: ${{ inputs.do-token }}
+
+    - name: Save kubeconfig
+      run: doctl kubernetes cluster kubeconfig save ${{ inputs.cluster-name }}
+      shell: bash
+
+    - name: Apply Deployment
+      run: |
+        echo "Applying centralized Deployment for ${{ inputs.deployment-name }} in namespace ${{ inputs.namespace }}"
+        kubectl apply -f - <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ${{ inputs.deployment-name }}
+  namespace: ${{ inputs.namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ${{ inputs.deployment-name }}
+  template:
+    metadata:
+      labels:
+        app: ${{ inputs.deployment-name }}
+    spec:
+      containers:
+        - name: ${{ inputs.container-name }}
+          image: ${{ inputs.image }}
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+            requests:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsGroup: 1001
+            runAsNonRoot: true
+            runAsUser: 1001
+      imagePullSecrets:
+        - name: harbor-secret
+EOF
+      shell: bash
+
+    - name: Wait for rollout
+      run: |
+        echo "Waiting for deployment ${{ inputs.deployment-name }} rollout in namespace ${{ inputs.namespace }}"
+        kubectl rollout status deployment/${{ inputs.deployment-name }} -n ${{ inputs.namespace }}
+      shell: bash
