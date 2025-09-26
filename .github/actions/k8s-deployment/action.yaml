@@ -1,73 +1,142 @@
-name: "K8s Deployment"
-description: "Deploy admin, server, and website to a Kubernetes cluster on DigitalOcean"
-author: "cloudops-one"
-
+name: 'Kubernetes Deployment'
+description: 'Deploy application to Kubernetes cluster'
 inputs:
-  do-token:
-    description: 'DigitalOcean API token'
+  environment:
+    description: 'Target environment'
     required: true
   cluster-name:
-    description: 'DigitalOcean Kubernetes cluster name'
+    description: 'Digital Ocean cluster name'
+    required: true
+  do-token:
+    description: 'Digital Ocean access token'
+    required: true
+  project-name:
+    description: 'Project name'
+    required: true
+  component:
+    description: 'Component name'
+    required: true
+  docker-tag:
+    description: 'Docker image tag'
+    required: true
+  harbor-registry:
+    description: 'Harbor registry URL'
+    required: true
+  harbor-username:
+    description: 'Harbor username'
+    required: true
+  harbor-password:
+    description: 'Harbor password'
     required: true
   namespace:
     description: 'Kubernetes namespace'
-    required: true
-  admin-image:
-    description: 'Admin Docker image'
-    required: true
-  server-image:
-    description: 'Server Docker image'
-    required: true
-  website-image:
-    description: 'Website Docker image'
-    required: true
-  admin-manifest:
-    description: 'Admin deployment manifest YAML path'
-    required: true
-  server-manifest:
-    description: 'Server deployment manifest YAML path'
-    required: true
-  website-manifest:
-    description: 'Website deployment manifest YAML path'
-    required: true
+    required: false
+  replicas:
+    description: 'Number of replicas'
+    required: false
+    default: '1'
 
 runs:
   using: "composite"
   steps:
-    - name: Install doctl
-      shell: bash
-      run: |
-        curl -sL https://github.com/digitalocean/doctl/releases/latest/download/doctl-$(uname -s)-$(uname -m) -o doctl
-        chmod +x doctl
-        mv doctl /usr/local/bin/
+    - name: Download kubeconfig
+      uses: cloudops-one/devops-ci/.github/actions/download-kubeconfig@main
+      with:
+        cluster-name: ${{ inputs.cluster-name }}
+        do-token: ${{ inputs.do-token }}
 
-    - name: Authenticate DO
+    - name: Setup kubectl
       shell: bash
       run: |
-        doctl auth init -t "${{ inputs.do-token }}"
+        kubectl version --client
+        kubectl cluster-info
 
-    - name: Setup Kubeconfig
+    - name: Create namespace if not exists
       shell: bash
       run: |
-        doctl kubernetes cluster kubeconfig save "${{ inputs.cluster-name }}"
-        echo "KUBECONFIG=$(doctl kubernetes cluster kubeconfig show ${{ inputs.cluster-name }})" >> $GITHUB_ENV
+        if ! kubectl get namespace ${{ inputs.namespace || inputs.environment }} >/dev/null 2>&1; then
+          kubectl create namespace ${{ inputs.namespace || inputs.environment }}
+          echo "Created namespace: ${{ inputs.namespace || inputs.environment }}"
+        else
+          echo "Namespace ${{ inputs.namespace || inputs.environment }} already exists"
+        fi
 
-    - name: Create Namespace if not exists
+    - name: Create Harbor image pull secret if not exists
       shell: bash
       run: |
-        kubectl get ns "${{ inputs.namespace }}" || kubectl create ns "${{ inputs.namespace }}"
+        SECRET_NAME="harbor-secret"
+        if ! kubectl get secret $SECRET_NAME -n ${{ inputs.namespace || inputs.environment }} >/dev/null 2>&1; then
+          kubectl create secret docker-registry $SECRET_NAME \
+            --docker-server=${{ inputs.harbor-registry }} \
+            --docker-username=${{ inputs.harbor-username }} \
+            --docker-password=${{ inputs.harbor-password }} \
+            --namespace=${{ inputs.namespace || inputs.environment }}
+          echo "Created new $SECRET_NAME"
+        else
+          echo "$SECRET_NAME already exists"
+        fi
 
-    - name: Deploy Admin
+    - name: Create deployment manifest
       shell: bash
       run: |
-        kubectl apply -f "${{ inputs.admin-manifest }}" -n "${{ inputs.namespace}}"
+        cat > deployment.yaml << EOF
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: ${{ inputs.project-name }}-${{ inputs.component }}
+          namespace: ${{ inputs.namespace || inputs.environment }}
+        spec:
+          replicas: ${{ inputs.replicas }}
+          selector:
+            matchLabels:
+              app: ${{ inputs.project-name }}-${{ inputs.component }}
+          template:
+            metadata:
+              labels:
+                app: ${{ inputs.project-name }}-${{ inputs.component }}
+            spec:
+              containers:
+                - name: ${{ inputs.project-name }}-${{ inputs.component }}
+                  image: ${{ inputs.harbor-registry }}/portal-irai-yoga/admin:${{ inputs.docker-tag }}
+                  imagePullPolicy: Always
+                  ports:
+                    - containerPort: 80
+                  resources:
+                    limits:
+                      cpu: "2"
+                      memory: 2Gi
+                    requests:
+                      cpu: "1"
+                      memory: 1Gi
+                  securityContext:
+                    allowPrivilegeEscalation: false
+              imagePullSecrets:
+                - name: harbor-registry-secret
+        EOF
 
-    - name: Deploy Server
+    - name: Apply deployment
       shell: bash
       run: |
-        kubectl apply -f "${{ inputs.server-manifest }}" -n "${{ inputs.namespace}}"
+        kubectl apply -f deployment.yaml -n ${{ inputs.namespace || inputs.environment }}
 
-    - name: Deploy Website
+    - name: Verify deployment
       shell: bash
       run: |
-        kubectl apply -f "${{ inputs.website-manifest }}" -n "${{ inputs.namespace}}"
+        echo "Waiting for deployment to be ready..."
+        kubectl rollout status deployment/${{ inputs.project-name }}-${{ inputs.component }} \
+          -n ${{ inputs.namespace || inputs.environment }} \
+          --timeout=300s
+
+        echo "Deployment status:"
+        kubectl get deployment/${{ inputs.project-name }}-${{ inputs.component }} \
+          -n ${{ inputs.namespace || inputs.environment }}
+
+        echo "Pods:"
+        kubectl get pods -n ${{ inputs.namespace || inputs.environment }} \
+          -l app=${{ inputs.project-name }}-${{ inputs.component }}
+
+    - name: Restart deployment if needed
+      shell: bash
+      run: |
+        kubectl rollout restart deployment/${{ inputs.project-name }}-${{ inputs.component }} \
+          -n ${{ inputs.namespace || inputs.environment }}
