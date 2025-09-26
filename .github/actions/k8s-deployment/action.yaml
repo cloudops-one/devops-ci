@@ -29,9 +29,13 @@ runs:
       shell: bash
 
     - name: Install kubectl
-      uses: cloudops-one/setup-kubectl@main
-      with:
-        version: v1.30.0
+      run: |
+        KUBECTL_VERSION="v1.30.0"
+        curl -LO https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/amd64/kubectl
+        chmod +x kubectl
+        sudo mv kubectl /usr/local/bin/
+        kubectl version --client
+      shell: bash
 
     - name: Ensure namespace exists
       run: |
