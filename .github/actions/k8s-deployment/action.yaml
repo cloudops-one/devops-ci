@@ -23,6 +23,9 @@ inputs:
   image:
     description: "Docker image with tag"
     required: true
+  deployment-file:
+    description: "Path to the deployment YAML file"
+    required: false
 
 runs:
   using: "composite"
@@ -36,9 +39,16 @@ runs:
       run: doctl kubernetes cluster kubeconfig save ${{ inputs.cluster-name }}
       shell: bash
 
-    - name: Deploy to Kubernetes
+    - name: Apply Deployment YAML (if provided)
+      if: ${{ inputs.deployment-file != '' }}
       run: |
-        echo "Deploying image '${{ inputs.image }}' to deployment '${{ inputs.deployment-name }}' in namespace '${{ inputs.namespace }}'"
+        echo "Applying deployment file ${{ inputs.deployment-file }} to namespace ${{ inputs.namespace }}"
+        kubectl apply -f ${{ inputs.deployment-file }} -n ${{ inputs.namespace }}
+      shell: bash
+
+    - name: Update Deployment image
+      run: |
+        echo "Updating deployment '${{ inputs.deployment-name }}' container '${{ inputs.container-name }}' to image '${{ inputs.image }}' in namespace '${{ inputs.namespace }}'"
         kubectl set image deployment/${{ inputs.deployment-name }} ${{ inputs.container-name }}=${{ inputs.image }} -n ${{ inputs.namespace }}
         kubectl rollout status deployment/${{ inputs.deployment-name }} -n ${{ inputs.namespace }}
       shell: bash
