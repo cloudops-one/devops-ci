@@ -1,63 +1,23 @@
-name: Deploy to Kubernetes
-description: "Create or update Deployment in DigitalOcean Kubernetes cluster"
-
-inputs:
-  do-token:
-    description: "DigitalOcean API token"
-    required: true
-  cluster-name:
-    description: "DigitalOcean Kubernetes cluster name"
-    required: true
-  namespace:
-    description: "Kubernetes namespace"
-    required: true
-    default: "irai-yoga-v1-stage"
-  deployment-name:
-    description: "Deployment name"
-    required: true
-    default: "irai-yoga-v1-admin-stage"
-  container-name:
-    description: "Container name in the deployment"
-    required: true
-    default: "irai-yoga-v1-admin-stage"
-  image:
-    description: "Docker image with tag"
-    required: true
-
-runs:
-  using: "composite"
-  steps:
-    - name: Set up doctl
-      uses: cloudops-one/action-doctl@v2
-      with:
-        token: ${{ inputs.do-token }}
-
-    - name: Save kubeconfig
-      run: doctl kubernetes cluster kubeconfig save ${{ inputs.cluster-name }}
-      shell: bash
-
-    - name: Apply Deployment
-      run: |
-        echo "Applying centralized Deployment for ${{ inputs.deployment-name }} in namespace ${{ inputs.namespace }}"
-        kubectl apply -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ${{ inputs.deployment-name }}
-  namespace: ${{ inputs.namespace }}
+  name: irai-yoga-v1-admin-stage
+  namespace: irai-yoga-v1-stage
+  labels:
+    app: irai-yoga-v1-admin-stage
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ${{ inputs.deployment-name }}
+      app: irai-yoga-v1-admin-stage
   template:
     metadata:
       labels:
-        app: ${{ inputs.deployment-name }}
+        app: irai-yoga-v1-admin-stage
     spec:
       containers:
-        - name: ${{ inputs.container-name }}
-          image: ${{ inputs.image }}
+        - name: irai-yoga-v1-admin-stage
+          image: your-image:tag  # Replace with actual image
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
@@ -75,11 +35,3 @@ spec:
             runAsUser: 1001
       imagePullSecrets:
         - name: harbor-secret
-EOF
-      shell: bash
-
-    - name: Wait for rollout
-      run: |
-        echo "Waiting for deployment ${{ inputs.deployment-name }} rollout in namespace ${{ inputs.namespace }}"
-        kubectl rollout status deployment/${{ inputs.deployment-name }} -n ${{ inputs.namespace }}
-      shell: bash
