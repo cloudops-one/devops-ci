@@ -5,23 +5,21 @@ inputs:
   do-token:
     description: "DigitalOcean API token"
     required: true
-
   cluster-name:
     description: "DigitalOcean Kubernetes cluster name"
     required: true
-
   namespace:
     description: "Kubernetes namespace"
     required: true
-
-  app-name:
-    description: "Application name (e.g., admin, server, website)"
+  deployment-name:
+    description: "Deployment name"
     required: true
-
+  container-name:
+    description: "Container name"
+    required: true
   image:
     description: "Docker image with tag"
     required: true
-
   deployment-file:
     description: "Path to the deployment YAML file"
     required: false
@@ -47,8 +45,6 @@ runs:
 
     - name: Update Deployment image
       run: |
-        DEPLOYMENT_NAME="irai-yoga-v1-${{ inputs.app-name }}-${{ inputs.namespace }}"
-        CONTAINER_NAME="irai-yoga-v1-${{ inputs.app-name }}-${{ inputs.namespace }}"
-        echo "Updating deployment '$DEPLOYMENT_NAME' container '$CONTAINER_NAME' to image '${{ inputs.image }}' in namespace '${{ inputs.namespace }}'"
-        kubectl rollout status deployment/$DEPLOYMENT_NAME -n ${{ inputs.namespace }}
+        echo "Updating deployment '${{ inputs.deployment-name }}' container '${{ inputs.container-name }}' to image '${{ inputs.image }}' in namespace '${{ inputs.namespace }}'"
+        kubectl rollout status deployment/${{ inputs.deployment-name }} -n ${{ inputs.namespace }}
       shell: bash
