@@ -49,6 +49,5 @@ runs:
     - name: Update Deployment image
       run: |
         echo "Updating deployment '${{ inputs.deployment-name }}' container '${{ inputs.container-name }}' to image '${{ inputs.image }}' in namespace '${{ inputs.namespace }}'"
-        kubectl set image deployment/${{ inputs.deployment-name }} ${{ inputs.container-name }}=${{ inputs.image }} -n ${{ inputs.namespace }}
         kubectl rollout status deployment/${{ inputs.deployment-name }} -n ${{ inputs.namespace }}
       shell: bash
