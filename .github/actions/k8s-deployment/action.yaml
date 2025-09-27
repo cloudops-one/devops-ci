@@ -1,5 +1,5 @@
 name: Deploy to Kubernetes
-description: "Deploy Docker image to DigitalOcean Kubernetes cluster"
+description: "Deploy to DigitalOcean Kubernetes cluster using deployment YAML"
 
 inputs:
   do-token:
@@ -11,18 +11,9 @@ inputs:
   namespace:
     description: "Kubernetes namespace"
     required: true
-  deployment-name:
-    description: "Deployment name"
-    required: true
-  container-name:
-    description: "Container name"
-    required: true
-  image:
-    description: "Docker image with tag"
-    required: false
   deployment-file:
     description: "Path to the deployment YAML file"
-    required: false
+    required: true
 
 runs:
   using: "composite"
@@ -36,15 +27,11 @@ runs:
       run: doctl kubernetes cluster kubeconfig save ${{ inputs.cluster-name }}
       shell: bash
 
-    - name: Apply Deployment YAML (if provided)
-      if: ${{ inputs.deployment-file != '' }}
+    - name: Apply Deployment YAML
       run: |
         echo "Applying deployment file ${{ inputs.deployment-file }} to namespace ${{ inputs.namespace }}"
         kubectl apply -f ${{ inputs.deployment-file }} -n ${{ inputs.namespace }}
-      shell: bash
-
-    - name: Update Deployment image
-      run: |
-        echo "Updating deployment '${{ inputs.deployment-name }}' container '${{ inputs.container-name }}' to image '${{ inputs.image }}' in namespace '${{ inputs.namespace }}'"
-        kubectl rollout status deployment/${{ inputs.deployment-name }} -n ${{ inputs.namespace }}
+        echo "Waiting for rollout..."
+        DEPLOY_NAME=$(yq e '.metadata.name' ${{ inputs.deployment-file }})
+        kubectl rollout status deployment/$DEPLOY_NAME -n ${{ inputs.namespace }}
       shell: bash
