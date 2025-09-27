@@ -75,6 +75,7 @@ spec:
             runAsUser: 1001
       imagePullSecrets:
         - name: harbor-secret
+EOF
       shell: bash
 
     - name: Wait for rollout
