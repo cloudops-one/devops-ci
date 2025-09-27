@@ -19,7 +19,7 @@ inputs:
     required: true
   image:
     description: "Docker image with tag"
-    required: true
+    required: false
   deployment-file:
     description: "Path to the deployment YAML file"
     required: false
