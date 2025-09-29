@@ -21,9 +21,9 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
-          env:
-            - name: VITE_API_BASE_URL
-              value: "https://server.stage.v1.irai.yoga/"
+          envFrom:
+            - configMapRef:
+                name: irai-yoga-v1-admin-config
           resources:
             limits:
               cpu: "2"
