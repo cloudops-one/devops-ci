@@ -65,6 +65,11 @@ runs:
         fi
         echo "Final build tool: ${{ steps.detect-build-tool.outputs.build_tool }}"
         
+    - name: Make gradlew executable
+      if: steps.detect-build-tool.outputs.build_tool == 'gradle'
+      shell: bash
+      run: chmod +x ./gradlew
+        
     - name: Run JaCoCo Code Coverage (Maven)
       if: steps.detect-build-tool.outputs.build_tool == 'maven' && inputs.skip-tests != 'true'
       shell: bash
