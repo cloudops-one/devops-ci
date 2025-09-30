@@ -34,15 +34,22 @@ runs:
       if: inputs.build-tool == 'maven' && inputs.skip-tests != 'true'
       shell: bash
       run: |
-        mvn test jacoco:prepare-agent jacoco:report -q
-        echo "JaCoCo report generated at target/site/jacoco/"
+        # Use clean verify instead of test to ensure proper lifecycle
+        mvn clean verify jacoco:report -q
+        echo "JaCoCo report should be generated at target/site/jacoco/jacoco.xml"
+        # List files to debug
+        echo "Checking report location:"
+        find . -name "jacoco.xml" -type f 2>/dev/null || echo "No jacoco.xml found"
+        ls -la target/site/jacoco/ 2>/dev/null || echo "jacoco directory not found"
         
     - name: Run JaCoCo Code Coverage (Gradle)
       if: inputs.build-tool == 'gradle' && inputs.skip-tests != 'true'
       shell: bash
       run: |
-        ./gradlew test jacocoTestReport --console=plain
-        echo "JaCoCo report generated at build/reports/jacoco/"
+        ./gradlew clean test jacocoTestReport --console=plain
+        echo "JaCoCo report generated at build/reports/jacoco/test/jacocoTestReport.xml"
+        # List files to debug
+        find . -name "jacoco*.xml" -type f 2>/dev/null || echo "No jacoco XML reports found"
         
     - name: Skip tests and generate empty JaCoCo report (Maven)
       if: inputs.build-tool == 'maven' && inputs.skip-tests == 'true'
@@ -142,17 +149,24 @@ runs:
       id: check-report
       shell: bash
       run: |
+        echo "Searching for JaCoCo reports..."
+        find . -name "jacoco*.xml" -type f | head -10
+        
         if [ "${{ inputs.build-tool }}" == "maven" ]; then
           if [ -f "target/site/jacoco/jacoco.xml" ]; then
             echo "report_exists=true" >> $GITHUB_OUTPUT
+            echo "Found Maven JaCoCo report"
           else
             echo "report_exists=false" >> $GITHUB_OUTPUT
+            echo "Maven JaCoCo report not found at target/site/jacoco/jacoco.xml"
           fi
         else
           if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
             echo "report_exists=true" >> $GITHUB_OUTPUT
+            echo "Found Gradle JaCoCo report"
           else
             echo "report_exists=false" >> $GITHUB_OUTPUT
+            echo "Gradle JaCoCo report not found at build/reports/jacoco/test/jacocoTestReport.xml"
           fi
         fi
         
@@ -168,32 +182,55 @@ runs:
           REPORT_PATH="build/reports/jacoco/test/jacocoTestReport.xml"
         fi
         
-        # Extract coverage percentages from XML
-        LINE_COVERAGE=$(grep -o 'linecoverage="[0-9.]*"' "$REPORT_PATH" | cut -d'"' -f2)
-        BRANCH_COVERAGE=$(grep -o 'branchcoverage="[0-9.]*"' "$REPORT_PATH" | cut -d'"' -f2)
-        
-        echo "Line Coverage: $(echo "scale=2; ${LINE_COVERAGE:-0} * 100" | bc)%"
-        echo "Branch Coverage: $(echo "scale=2; ${BRANCH_COVERAGE:-0} * 100" | bc)%"
-        
-        # Check if coverage meets minimum thresholds
-        MIN_LINE=${{ inputs.min-line-coverage }}
-        MIN_BRANCH=${{ inputs.min-branch-coverage }}
-        
-        LINE_PERCENT=$(echo "scale=2; ${LINE_COVERAGE:-0} * 100" | bc)
-        BRANCH_PERCENT=$(echo "scale=2; ${BRANCH_COVERAGE:-0} * 100" | bc)
-        
-        if (( $(echo "$LINE_PERCENT < $MIN_LINE" | bc -l) )); then
-          echo "❌ Line coverage ($LINE_PERCENT%) is below minimum required ($MIN_LINE%)"
-          exit 1
+        # Extract coverage percentages from XML using more robust method
+        if [ -f "$REPORT_PATH" ]; then
+          echo "Analyzing report: $REPORT_PATH"
+          
+          # Extract counter values for line and branch coverage
+          LINE_MISSED=$(grep '<counter type="LINE"' "$REPORT_PATH" | head -1 | sed -n 's/.*missed="\([0-9]*\)".*/\1/p')
+          LINE_COVERED=$(grep '<counter type="LINE"' "$REPORT_PATH" | head -1 | sed -n 's/.*covered="\([0-9]*\)".*/\1/p')
+          BRANCH_MISSED=$(grep '<counter type="BRANCH"' "$REPORT_PATH" | head -1 | sed -n 's/.*missed="\([0-9]*\)".*/\1/p')
+          BRANCH_COVERED=$(grep '<counter type="BRANCH"' "$REPORT_PATH" | head -1 | sed -n 's/.*covered="\([0-9]*\)".*/\1/p')
+          
+          # Calculate percentages
+          LINE_TOTAL=$((LINE_MISSED + LINE_COVERED))
+          BRANCH_TOTAL=$((BRANCH_MISSED + BRANCH_COVERED))
+          
+          if [ $LINE_TOTAL -gt 0 ]; then
+            LINE_PERCENT=$(echo "scale=2; $LINE_COVERED * 100 / $LINE_TOTAL" | bc)
+          else
+            LINE_PERCENT=0
+          fi
+          
+          if [ $BRANCH_TOTAL -gt 0 ]; then
+            BRANCH_PERCENT=$(echo "scale=2; $BRANCH_COVERED * 100 / $BRANCH_TOTAL" | bc)
+          else
+            BRANCH_PERCENT=0
+          fi
+          
+          echo "Line Coverage: $LINE_PERCENT% ($LINE_COVERED/$LINE_TOTAL)"
+          echo "Branch Coverage: $BRANCH_PERCENT% ($BRANCH_COVERED/$BRANCH_TOTAL)"
+          
+          # Check if coverage meets minimum thresholds
+          MIN_LINE=${{ inputs.min-line-coverage }}
+          MIN_BRANCH=${{ inputs.min-branch-coverage }}
+          
+          if (( $(echo "$LINE_PERCENT < $MIN_LINE" | bc -l) )); then
+            echo "❌ Line coverage ($LINE_PERCENT%) is below minimum required ($MIN_LINE%)"
+            exit 1
+          else
+            echo "✅ Line coverage meets minimum requirement ($LINE_PERCENT% >= $MIN_LINE%)"
+          fi
+          
+          if (( $(echo "$BRANCH_PERCENT < $MIN_BRANCH" | bc -l) )); then
+            echo "❌ Branch coverage ($BRANCH_PERCENT%) is below minimum required ($MIN_BRANCH%)"
+            exit 1
+          else
+            echo "✅ Branch coverage meets minimum requirement ($BRANCH_PERCENT% >= $MIN_BRANCH%)"
+          fi
         else
-          echo "✅ Line coverage meets minimum requirement ($LINE_PERCENT% >= $MIN_LINE%)"
-        fi
-        
-        if (( $(echo "$BRANCH_PERCENT < $MIN_BRANCH" | bc -l) )); then
-          echo "❌ Branch coverage ($BRANCH_PERCENT%) is below minimum required ($MIN_BRANCH%)"
+          echo "Report file not found: $REPORT_PATH"
           exit 1
-        else
-          echo "✅ Branch coverage meets minimum requirement ($BRANCH_PERCENT% >= $MIN_BRANCH%)"
         fi
         
     - name: Warn if no JaCoCo report found
@@ -202,6 +239,8 @@ runs:
       run: |
         echo "⚠️  No JaCoCo report found."
         echo "Please check if tests were executed properly or if skip-tests was set to true."
+        echo "Build tool: ${{ inputs.build-tool }}"
+        echo "Skip tests: ${{ inputs.skip-tests }}"
         
     - name: Upload JaCoCo Report
       if: always()
