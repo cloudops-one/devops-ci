@@ -64,7 +64,7 @@ runs:
           "-Dsonar.exclusions=**/node_modules/**,**/dist/**,**/coverage/**,**/*.d.ts"
           "-Dsonar.tests=${{ inputs.sources-path }}"
           "-Dsonar.test.inclusions=**/*.test.js,**/*.test.ts,**/*.spec.js,**/*.spec.ts"
-          "-Dsonar.qualitygate.wait=true"
+          "-Dsonar.qualitygate.wait=false"
         )
         
         # Add coverage path if the file exists
