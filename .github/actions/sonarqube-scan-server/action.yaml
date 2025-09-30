@@ -46,12 +46,12 @@ runs:
         chmod +x ./gradlew
         ls -la gradlew
 
-    - name: Build project (skip tests and Spotless)
+    - name: Build project with tests and coverage
       shell: bash
       run: |
-        echo "Building project (skipping tests and Spotless)..."
-        ./gradlew clean build -x test -x spotlessJavaCheck -x spotlessJava -x jacocoTestReport
-        echo "✓ Build completed"
+        echo "Building project with tests and coverage..."
+        ./gradlew clean build jacocoTestReport
+        echo "✓ Build with tests completed"
 
     - name: Run SonarQube Analysis
       shell: bash
@@ -73,7 +73,8 @@ runs:
           "-Dsonar.java.binaries=build/classes"
           "-Dsonar.sourceEncoding=UTF-8"
           "-Dsonar.qualitygate.wait=true"
-          "-Dsonar.gradle.skipCompile=true"
+          "-Dsonar.coverage.jacoco.xmlReportPaths=build/reports/jacoco/test/jacocoTestReport.xml"
+          "-Dsonar.java.libraries=build/libs/*.jar"
         )
         
         echo "SonarQube parameters:"
