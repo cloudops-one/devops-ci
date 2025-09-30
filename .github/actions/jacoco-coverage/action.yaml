@@ -5,6 +5,7 @@ inputs:
   build-tool:
     description: 'Build tool (maven or gradle)'
     required: true
+    default: 'maven'
   min-line-coverage:
     description: 'Minimum line coverage percentage'
     required: true
@@ -30,29 +31,48 @@ runs:
         java-version: '17'
         distribution: 'temurin'
         
-    - name: Run JaCoCo Code Coverage (Maven)
-      if: inputs.build-tool == 'maven' && inputs.skip-tests != 'true'
+    - name: Debug inputs
       shell: bash
       run: |
-        # Use clean verify instead of test to ensure proper lifecycle
-        mvn clean verify jacoco:report -q
-        echo "JaCoCo report should be generated at target/site/jacoco/jacoco.xml"
-        # List files to debug
-        echo "Checking report location:"
-        find . -name "jacoco.xml" -type f 2>/dev/null || echo "No jacoco.xml found"
-        ls -la target/site/jacoco/ 2>/dev/null || echo "jacoco directory not found"
+        echo "Build tool: '${{ inputs.build-tool }}'"
+        echo "Skip tests: '${{ inputs.skip-tests }}'"
+        echo "Min line coverage: '${{ inputs.min-line-coverage }}'"
+        echo "Min branch coverage: '${{ inputs.min-branch-coverage }}'"
+        
+    - name: Detect build tool if not specified
+      if: inputs.build-tool == ''
+      id: detect-build-tool
+      shell: bash
+      run: |
+        if [ -f "pom.xml" ]; then
+          echo "build_tool=maven" >> $GITHUB_OUTPUT
+          echo "Detected Maven project"
+        elif [ -f "build.gradle" ] || [ -f "build.gradle.kts" ]; then
+          echo "build_tool=gradle" >> $GITHUB_OUTPUT
+          echo "Detected Gradle project"
+        else
+          echo "build_tool=maven" >> $GITHUB_OUTPUT
+          echo "No build file detected, defaulting to Maven"
+        fi
+        
+    - name: Run JaCoCo Code Coverage (Maven)
+      if: (inputs.build-tool == 'maven' || steps.detect-build-tool.outputs.build_tool == 'maven') && inputs.skip-tests != 'true'
+      shell: bash
+      run: |
+        echo "Running Maven JaCoCo coverage..."
+        mvn clean test jacoco:report -q
+        echo "Maven JaCoCo report should be generated at target/site/jacoco/jacoco.xml"
         
     - name: Run JaCoCo Code Coverage (Gradle)
-      if: inputs.build-tool == 'gradle' && inputs.skip-tests != 'true'
+      if: (inputs.build-tool == 'gradle' || steps.detect-build-tool.outputs.build_tool == 'gradle') && inputs.skip-tests != 'true'
       shell: bash
       run: |
+        echo "Running Gradle JaCoCo coverage..."
         ./gradlew clean test jacocoTestReport --console=plain
-        echo "JaCoCo report generated at build/reports/jacoco/test/jacocoTestReport.xml"
-        # List files to debug
-        find . -name "jacoco*.xml" -type f 2>/dev/null || echo "No jacoco XML reports found"
+        echo "Gradle JaCoCo report generated at build/reports/jacoco/test/jacocoTestReport.xml"
         
     - name: Skip tests and generate empty JaCoCo report (Maven)
-      if: inputs.build-tool == 'maven' && inputs.skip-tests == 'true'
+      if: (inputs.build-tool == 'maven' || steps.detect-build-tool.outputs.build_tool == 'maven') && inputs.skip-tests == 'true'
       shell: bash
       run: |
         echo "Skipping tests and generating empty JaCoCo report for Maven"
@@ -99,7 +119,7 @@ runs:
         echo "Empty JaCoCo report generated for skipped tests"
         
     - name: Skip tests and generate empty JaCoCo report (Gradle)
-      if: inputs.build-tool == 'gradle' && inputs.skip-tests == 'true'
+      if: (inputs.build-tool == 'gradle' || steps.detect-build-tool.outputs.build_tool == 'gradle') && inputs.skip-tests == 'true'
       shell: bash
       run: |
         echo "Skipping tests and generating empty JaCoCo report for Gradle"
@@ -150,9 +170,18 @@ runs:
       shell: bash
       run: |
         echo "Searching for JaCoCo reports..."
-        find . -name "jacoco*.xml" -type f | head -10
+        find . -name "jacoco*.xml" -type f | head -10 || echo "No JaCoCo XML files found"
         
-        if [ "${{ inputs.build-tool }}" == "maven" ]; then
+        # Determine which build tool we're actually using
+        if [ -n "${{ inputs.build-tool }}" ]; then
+          ACTUAL_BUILD_TOOL="${{ inputs.build-tool }}"
+        else
+          ACTUAL_BUILD_TOOL="${{ steps.detect-build-tool.outputs.build_tool }}"
+        fi
+        
+        echo "Actual build tool: $ACTUAL_BUILD_TOOL"
+        
+        if [ "$ACTUAL_BUILD_TOOL" == "maven" ]; then
           if [ -f "target/site/jacoco/jacoco.xml" ]; then
             echo "report_exists=true" >> $GITHUB_OUTPUT
             echo "Found Maven JaCoCo report"
@@ -160,6 +189,7 @@ runs:
             echo "report_exists=false" >> $GITHUB_OUTPUT
             echo "Maven JaCoCo report not found at target/site/jacoco/jacoco.xml"
           fi
+          echo "report_path=target/site/jacoco/jacoco.xml" >> $GITHUB_OUTPUT
         else
           if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
             echo "report_exists=true" >> $GITHUB_OUTPUT
@@ -168,6 +198,7 @@ runs:
             echo "report_exists=false" >> $GITHUB_OUTPUT
             echo "Gradle JaCoCo report not found at build/reports/jacoco/test/jacocoTestReport.xml"
           fi
+          echo "report_path=build/reports/jacoco/test/jacocoTestReport.xml" >> $GITHUB_OUTPUT
         fi
         
     - name: Run JaCoCo analysis if report exists
@@ -176,13 +207,8 @@ runs:
       run: |
         echo "=== JaCoCo Coverage Summary ==="
         
-        if [ "${{ inputs.build-tool }}" == "maven" ]; then
-          REPORT_PATH="target/site/jacoco/jacoco.xml"
-        else
-          REPORT_PATH="build/reports/jacoco/test/jacocoTestReport.xml"
-        fi
+        REPORT_PATH="${{ steps.check-report.outputs.report_path }}"
         
-        # Extract coverage percentages from XML using more robust method
         if [ -f "$REPORT_PATH" ]; then
           echo "Analyzing report: $REPORT_PATH"
           
@@ -191,6 +217,15 @@ runs:
           LINE_COVERED=$(grep '<counter type="LINE"' "$REPORT_PATH" | head -1 | sed -n 's/.*covered="\([0-9]*\)".*/\1/p')
           BRANCH_MISSED=$(grep '<counter type="BRANCH"' "$REPORT_PATH" | head -1 | sed -n 's/.*missed="\([0-9]*\)".*/\1/p')
           BRANCH_COVERED=$(grep '<counter type="BRANCH"' "$REPORT_PATH" | head -1 | sed -n 's/.*covered="\([0-9]*\)".*/\1/p')
+          
+          # Set defaults if values are empty
+          LINE_MISSED=${LINE_MISSED:-0}
+          LINE_COVERED=${LINE_COVERED:-0}
+          BRANCH_MISSED=${BRANCH_MISSED:-0}
+          BRANCH_COVERED=${BRANCH_COVERED:-0}
+          
+          echo "Line missed: $LINE_MISSED, covered: $LINE_COVERED"
+          echo "Branch missed: $BRANCH_MISSED, covered: $BRANCH_COVERED"
           
           # Calculate percentages
           LINE_TOTAL=$((LINE_MISSED + LINE_COVERED))
@@ -238,9 +273,9 @@ runs:
       shell: bash
       run: |
         echo "⚠️  No JaCoCo report found."
+        echo "Build tool: '${{ inputs.build-tool }}'"
+        echo "Skip tests: '${{ inputs.skip-tests }}'"
         echo "Please check if tests were executed properly or if skip-tests was set to true."
-        echo "Build tool: ${{ inputs.build-tool }}"
-        echo "Skip tests: ${{ inputs.skip-tests }}"
         
     - name: Upload JaCoCo Report
       if: always()
@@ -248,5 +283,6 @@ runs:
       with:
         name: jacoco-coverage-report
         path: |
-          ${{ inputs.build-tool == 'maven' && 'target/site/jacoco/' || 'build/reports/jacoco/' }}
+          ${{ inputs.build-tool == 'maven' || steps.detect-build-tool.outputs.build_tool == 'maven' && 'target/site/jacoco/' || 'build/reports/jacoco/' }}
         retention-days: 7
+        if-no-files-found: warn
