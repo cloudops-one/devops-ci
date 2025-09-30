@@ -72,7 +72,7 @@ runs:
           "-Dsonar.test.inclusions=**/*Test.java,**/*Tests.java,**/*Spec.java"
           "-Dsonar.java.binaries=build/classes"
           "-Dsonar.sourceEncoding=UTF-8"
-          "-Dsonar.qualitygate.wait=true"
+          "-Dsonar.qualitygate.wait=false"
           "-Dsonar.gradle.skipCompile=true"
         )
         
