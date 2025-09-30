@@ -7,11 +7,11 @@ inputs:
     required: true
   min-line-coverage:
     description: 'Minimum line coverage percentage'
-    required: false
-    default: '70'
+    required: true
+    default: '85'
   min-branch-coverage:
     description: 'Minimum branch coverage percentage'
-    required: false
+    required: true
     default: '60'
   skip-tests:
     description: 'Skip test execution'
