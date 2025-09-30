@@ -90,46 +90,46 @@ runs:
       shell: bash
       run: |
         echo "Running Gradle tests with JaCoCo coverage..."
-        ./gradlew clean test jacocoTestReport --console=plain
         
-        echo "=== Debugging JaCoCo report locations ==="
-        echo "Current directory: $(pwd)"
-        echo "Listing build directory:"
-        ls -la build/ || echo "No build directory"
-        echo "Listing build/reports directory:"
-        ls -la build/reports/ || echo "No reports directory"
-        echo "Listing build/reports/jacoco directory:"
-        ls -la build/reports/jacoco/ || echo "No jacoco directory"
+        # First run tests and generate basic JaCoCo report
+        ./gradlew clean test --console=plain
         
-        echo "Searching for all JaCoCo files:"
-        find . -name "*jacoco*" -type f 2>/dev/null | head -20 || echo "No JaCoCo files found"
-        find . -name "*.xml" -path "*/jacoco/*" -type f 2>/dev/null | head -20 || echo "No JaCoCo XML files found"
+        echo "=== Generating JaCoCo XML report ==="
+        # Try to generate XML report with Gradle
+        ./gradlew jacocoTestReport --console=plain
         
-        echo "Checking specific paths:"
-        check_paths=(
-          "build/reports/jacoco/test/jacocoTestReport.xml"
-          "build/reports/jacoco/test.xml"
-          "build/reports/jacoco/jacocoTestReport.xml"
-          "build/reports/jacoco/test/jacoco.xml"
-          "build/jacoco/test.exec"
-          "build/jacoco/test/jacocoTestReport.xml"
-        )
+        # If XML report still not generated, create it manually from .exec file using JaCoCo CLI
+        if [ ! -f "build/reports/jacoco/test/jacocoTestReport.xml" ] && [ -f "build/jacoco/test.exec" ]; then
+          echo "Generating XML report from .exec file using JaCoCo CLI..."
+          # Download JaCoCo CLI
+          wget -q -O jacococli.jar https://repo1.maven.org/maven2/org/jacoco/org.jacoco.cli/0.8.10/org.jacoco.cli-0.8.10-nodeps.jar
+          
+          # Create directories if they don't exist
+          mkdir -p build/reports/jacoco/test/
+          
+          # Generate XML report from .exec file
+          java -jar jacococli.jar report build/jacoco/test.exec \
+            --classfiles build/classes/java/main \
+            --sourcefiles src/main/java \
+            --xml build/reports/jacoco/test/jacocoTestReport.xml
+          
+          echo "XML report generated using JaCoCo CLI"
+        fi
         
-        for path in "${check_paths[@]}"; do
-          if [ -f "$path" ]; then
-            echo "✅ FOUND: $path"
-            echo "File size: $(wc -c < "$path") bytes"
-          else
-            echo "❌ NOT FOUND: $path"
-          fi
-        done
-        
-        # If we find any JaCoCo XML file, use it
-        JACOCO_XML=$(find . -name "*.xml" -path "*/jacoco/*" -type f 2>/dev/null | head -1)
-        if [ -n "$JACOCO_XML" ]; then
-          echo "✅ Using JaCoCo report: $JACOCO_XML"
+        echo "Final XML report check:"
+        if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
+          echo "✅ JaCoCo XML report generated successfully"
+          echo "File size: $(wc -c < "build/reports/jacoco/test/jacocoTestReport.xml") bytes"
+          echo "File content sample:"
+          head -20 "build/reports/jacoco/test/jacocoTestReport.xml" || echo "Could not read file"
         else
-          echo "❌ No JaCoCo XML report found"
+          echo "❌ Failed to generate JaCoCo XML report"
+          echo "Available JaCoCo files:"
+          find build/ -name "*jacoco*" -type f 2>/dev/null | head -20
+          echo "Available build files:"
+          find build/ -name "*.class" -type f 2>/dev/null | head -5 || echo "No class files found"
+          echo "Source files check:"
+          find src/main/java -name "*.java" -type f 2>/dev/null | head -5 || echo "No Java source files found"
           exit 1
         fi
         
@@ -194,17 +194,16 @@ runs:
             echo "❌ Maven JaCoCo report not found at target/site/jacoco/jacoco.xml"
           fi
         else
-          # Find any JaCoCo XML report for Gradle
-          JACOCO_REPORT=$(find . -name "*.xml" -path "*/jacoco/*" -type f 2>/dev/null | head -1)
-          if [ -n "$JACOCO_REPORT" ] && [ -f "$JACOCO_REPORT" ]; then
+          # Check for Gradle JaCoCo XML report
+          if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
             echo "report_exists=true" >> $GITHUB_OUTPUT
-            echo "report_path=$JACOCO_REPORT" >> $GITHUB_OUTPUT
-            echo "✅ Found Gradle JaCoCo report at: $JACOCO_REPORT"
+            echo "report_path=build/reports/jacoco/test/jacocoTestReport.xml" >> $GITHUB_OUTPUT
+            echo "✅ Found Gradle JaCoCo XML report"
           else
             echo "report_exists=false" >> $GITHUB_OUTPUT
-            echo "❌ No Gradle JaCoCo XML report found"
-            echo "Available files in build directory:"
-            find build/ -type f -name "*.xml" 2>/dev/null | head -20 || echo "No XML files in build directory"
+            echo "❌ Gradle JaCoCo XML report not found at build/reports/jacoco/test/jacocoTestReport.xml"
+            echo "Available files in build/reports/jacoco/:"
+            find build/reports/jacoco/ -type f 2>/dev/null | head -10
           fi
         fi
         
