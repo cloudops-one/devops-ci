@@ -91,18 +91,45 @@ runs:
       run: |
         echo "Running Gradle tests with JaCoCo coverage..."
         ./gradlew clean test jacocoTestReport --console=plain
-        echo "Checking for JaCoCo reports..."
-        # Check multiple possible locations for the JaCoCo report
-        if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
-          echo "✅ JaCoCo report found at: build/reports/jacoco/test/jacocoTestReport.xml"
-        elif [ -f "build/reports/jacoco/test.xml" ]; then
-          echo "✅ JaCoCo report found at: build/reports/jacoco/test.xml"
-        elif [ -f "build/reports/jacoco/jacocoTestReport.xml" ]; then
-          echo "✅ JaCoCo report found at: build/reports/jacoco/jacocoTestReport.xml"
+        
+        echo "=== Debugging JaCoCo report locations ==="
+        echo "Current directory: $(pwd)"
+        echo "Listing build directory:"
+        ls -la build/ || echo "No build directory"
+        echo "Listing build/reports directory:"
+        ls -la build/reports/ || echo "No reports directory"
+        echo "Listing build/reports/jacoco directory:"
+        ls -la build/reports/jacoco/ || echo "No jacoco directory"
+        
+        echo "Searching for all JaCoCo files:"
+        find . -name "*jacoco*" -type f 2>/dev/null | head -20 || echo "No JaCoCo files found"
+        find . -name "*.xml" -path "*/jacoco/*" -type f 2>/dev/null | head -20 || echo "No JaCoCo XML files found"
+        
+        echo "Checking specific paths:"
+        check_paths=(
+          "build/reports/jacoco/test/jacocoTestReport.xml"
+          "build/reports/jacoco/test.xml"
+          "build/reports/jacoco/jacocoTestReport.xml"
+          "build/reports/jacoco/test/jacoco.xml"
+          "build/jacoco/test.exec"
+          "build/jacoco/test/jacocoTestReport.xml"
+        )
+        
+        for path in "${check_paths[@]}"; do
+          if [ -f "$path" ]; then
+            echo "✅ FOUND: $path"
+            echo "File size: $(wc -c < "$path") bytes"
+          else
+            echo "❌ NOT FOUND: $path"
+          fi
+        done
+        
+        # If we find any JaCoCo XML file, use it
+        JACOCO_XML=$(find . -name "*.xml" -path "*/jacoco/*" -type f 2>/dev/null | head -1)
+        if [ -n "$JACOCO_XML" ]; then
+          echo "✅ Using JaCoCo report: $JACOCO_XML"
         else
-          echo "❌ JaCoCo report was not generated in expected locations"
-          echo "Available JaCoCo files:"
-          find build/reports/jacoco/ -name "*.xml" -type f 2>/dev/null || echo "No JaCoCo XML files found"
+          echo "❌ No JaCoCo XML report found"
           exit 1
         fi
         
@@ -153,7 +180,6 @@ runs:
       shell: bash
       run: |
         echo "Searching for JaCoCo reports..."
-        find . -name "jacoco*.xml" -type f | head -10 || echo "No JaCoCo XML files found"
         
         ACTUAL_BUILD_TOOL="${{ steps.detect-build-tool.outputs.build_tool }}"
         echo "Actual build tool: $ACTUAL_BUILD_TOOL"
@@ -168,24 +194,17 @@ runs:
             echo "❌ Maven JaCoCo report not found at target/site/jacoco/jacoco.xml"
           fi
         else
-          # Check multiple possible locations for Gradle JaCoCo report
-          if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
+          # Find any JaCoCo XML report for Gradle
+          JACOCO_REPORT=$(find . -name "*.xml" -path "*/jacoco/*" -type f 2>/dev/null | head -1)
+          if [ -n "$JACOCO_REPORT" ] && [ -f "$JACOCO_REPORT" ]; then
             echo "report_exists=true" >> $GITHUB_OUTPUT
-            echo "report_path=build/reports/jacoco/test/jacocoTestReport.xml" >> $GITHUB_OUTPUT
-            echo "✅ Found Gradle JaCoCo report at: build/reports/jacoco/test/jacocoTestReport.xml"
-          elif [ -f "build/reports/jacoco/test.xml" ]; then
-            echo "report_exists=true" >> $GITHUB_OUTPUT
-            echo "report_path=build/reports/jacoco/test.xml" >> $GITHUB_OUTPUT
-            echo "✅ Found Gradle JaCoCo report at: build/reports/jacoco/test.xml"
-          elif [ -f "build/reports/jacoco/jacocoTestReport.xml" ]; then
-            echo "report_exists=true" >> $GITHUB_OUTPUT
-            echo "report_path=build/reports/jacoco/jacocoTestReport.xml" >> $GITHUB_OUTPUT
-            echo "✅ Found Gradle JaCoCo report at: build/reports/jacoco/jacocoTestReport.xml"
+            echo "report_path=$JACOCO_REPORT" >> $GITHUB_OUTPUT
+            echo "✅ Found Gradle JaCoCo report at: $JACOCO_REPORT"
           else
             echo "report_exists=false" >> $GITHUB_OUTPUT
-            echo "❌ Gradle JaCoCo report not found in expected locations"
-            echo "Available JaCoCo files:"
-            find build/reports/jacoco/ -name "*.xml" -type f 2>/dev/null || echo "No JaCoCo XML files found"
+            echo "❌ No Gradle JaCoCo XML report found"
+            echo "Available files in build directory:"
+            find build/ -type f -name "*.xml" 2>/dev/null | head -20 || echo "No XML files in build directory"
           fi
         fi
         
