@@ -59,7 +59,7 @@ runs:
       run: |
         ./gradlew clean build jacocoTestReport
 
-    # 6️⃣ Run SonarQube Analysis with proper configuration
+    # 6️⃣ Run SonarQube Analysis with proper quoting
     - name: Run SonarQube Analysis
       shell: bash
       env:
@@ -67,20 +67,19 @@ runs:
         SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
       run: |
         echo "Running SonarQube analysis..."
-
         ./gradlew sonar \
-          -Dsonar.token=$SONAR_TOKEN \
-          -Dsonar.host.url=$SONAR_HOST_URL \
-          -Dsonar.projectKey=${{ inputs.project-key }} \
-          -Dsonar.projectName=${{ inputs.project-name }} \
-          -Dsonar.projectVersion=${{ inputs.docker-tag }} \
-          -Dsonar.sources=${{ inputs.sources-path }} \
-          -Dsonar.tests=${{ inputs.sources-path }} \
-          -Dsonar.test.inclusions=**/*Test.java,**/*Tests.java,**/*Spec.java \
-          -Dsonar.java.binaries=build/classes \
-          -Dsonar.coverage.jacoco.xmlReportPaths=build/reports/jacoco/test/jacocoTestReport.xml \
+          -Dsonar.token="$SONAR_TOKEN" \
+          -Dsonar.host.url="$SONAR_HOST_URL" \
+          -Dsonar.projectKey="${{ inputs.project-key }}" \
+          -Dsonar.projectName="${{ inputs.project-name }}" \
+          -Dsonar.projectVersion="${{ inputs.docker-tag }}" \
+          -Dsonar.sources="${{ inputs.sources-path }}" \
+          -Dsonar.tests="${{ inputs.sources-path }}" \
+          -Dsonar.test.inclusions="**/*Test.java,**/*Tests.java,**/*Spec.java" \
+          -Dsonar.java.binaries="build/classes" \
+          -Dsonar.coverage.jacoco.xmlReportPaths="build/reports/jacoco/test/jacocoTestReport.xml" \
           -Dsonar.qualitygate.wait=true \
-          -Dsonar.sourceEncoding=UTF-8 \
+          -Dsonar.sourceEncoding="UTF-8" \
           -Dsonar.gradle.skipCompile=true
 
     # 7️⃣ Print a summary
