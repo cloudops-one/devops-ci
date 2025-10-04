@@ -28,38 +28,40 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    # 1️⃣ Checkout full repository to enable blame info
     - name: Checkout code
       uses: cloudops-one/checkout@v4
       with:
         fetch-depth: 0
 
-    # 2️⃣ Setup JDK for Sonar
     - name: Set up JDK for SonarScanner
       uses: cloudops-one/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
 
-    # 3️⃣ Make gradlew executable
     - name: Make gradlew executable
       shell: bash
       run: |
         chmod +x ./gradlew
         ls -la gradlew
 
-    # 4️⃣ Apply Spotless formatting
+    # Step 1: Apply Spotless formatting
     - name: Apply Spotless formatting
       shell: bash
-      run: ./gradlew spotlessApply
+      run: |
+        echo "Running Spotless auto-format..."
+        ./gradlew spotlessApply
+        echo "✓ Spotless formatting applied successfully"
 
-    # 5️⃣ Build project with tests and generate Jacoco XML report
+    # Step 2: Build + tests + Jacoco coverage
     - name: Build project with tests and coverage
       shell: bash
       run: |
+        echo "Building project and generating Jacoco coverage..."
         ./gradlew clean build jacocoTestReport
+        echo "✓ Build and coverage completed"
 
-    # 6️⃣ Run SonarQube Analysis with proper quoting
+    # Step 3: Run SonarQube analysis
     - name: Run SonarQube Analysis
       shell: bash
       env:
@@ -67,22 +69,27 @@ runs:
         SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
       run: |
         echo "Running SonarQube analysis..."
-        ./gradlew sonar \
+        
+        ./gradlew sonarqube \
           -Dsonar.token="$SONAR_TOKEN" \
           -Dsonar.host.url="$SONAR_HOST_URL" \
           -Dsonar.projectKey="${{ inputs.project-key }}" \
           -Dsonar.projectName="${{ inputs.project-name }}" \
           -Dsonar.projectVersion="${{ inputs.docker-tag }}" \
           -Dsonar.sources="${{ inputs.sources-path }}" \
+          -Dsonar.exclusions="**/test/**,**/build/**,**/gradle/**,**/*.gradle" \
           -Dsonar.tests="${{ inputs.sources-path }}" \
           -Dsonar.test.inclusions="**/*Test.java,**/*Tests.java,**/*Spec.java" \
           -Dsonar.java.binaries="build/classes" \
           -Dsonar.coverage.jacoco.xmlReportPaths="build/reports/jacoco/test/jacocoTestReport.xml" \
-          -Dsonar.qualitygate.wait=true \
+          -Dsonar.java.libraries="build/libs/*.jar" \
+          -Dsonar.gradle.skipCompile=true \
           -Dsonar.sourceEncoding="UTF-8" \
-          -Dsonar.gradle.skipCompile=true
+          -Dsonar.qualitygate.wait=true
 
-    # 7️⃣ Print a summary
+        echo "✓ SonarQube analysis completed successfully!"
+
+    # Step 4: Summary
     - name: SonarQube Analysis Summary
       shell: bash
       run: |
