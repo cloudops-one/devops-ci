@@ -17,13 +17,11 @@ spec:
     spec:
       containers:
         - name: irai-yoga-v1-admin-stage
-          image: harbor.cloudops.terv.pro/portal-irai-yoga/admin:stage  # Replace with actual image
+          image: harbor.cloudops.terv.pro/portal-irai-yoga/admin:stage
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
-          envFrom:
-            - configMapRef:
-                name: irai-yoga-v1-admin-config
+          # Removed envFrom - ConfigMap not needed for VITE_API_BASE_URL
           resources:
             limits:
               cpu: "2"
@@ -36,5 +34,21 @@ spec:
             runAsGroup: 1001
             runAsNonRoot: true
             runAsUser: 1001
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 1
       imagePullSecrets:
         - name: harbor-secret
