@@ -46,6 +46,14 @@ runs:
         chmod +x ./gradlew
         ls -la gradlew
 
+    # 🧩 NEW STEP — automatically fix Spotless formatting issues
+    - name: Apply Spotless formatting
+      shell: bash
+      run: |
+        echo "Running Spotless auto-format..."
+        ./gradlew spotlessApply
+        echo "✓ Spotless formatting applied successfully"
+
     - name: Build project with tests and coverage
       shell: bash
       run: |
@@ -61,7 +69,6 @@ runs:
       run: |
         echo "Running SonarQube analysis..."
         
-        # Build parameters array (Community Edition compatible)
         PARAMS=(
           "-Dsonar.projectKey=${{ inputs.project-key }}"
           "-Dsonar.projectName=${{ inputs.project-name }}"
@@ -82,9 +89,7 @@ runs:
           echo "  $param"
         done
         
-        # Use 'sonar' task instead of deprecated 'sonarqube'
         ./gradlew sonar "${PARAMS[@]}"
-        
         echo "✓ SonarQube analysis completed successfully!"
 
     - name: SonarQube Analysis Summary
