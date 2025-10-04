@@ -28,39 +28,38 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    # 1️⃣ Checkout full repository to enable blame info
     - name: Checkout code
       uses: cloudops-one/checkout@v4
       with:
         fetch-depth: 0
 
+    # 2️⃣ Setup JDK for Sonar
     - name: Set up JDK for SonarScanner
       uses: cloudops-one/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
 
+    # 3️⃣ Make gradlew executable
     - name: Make gradlew executable
       shell: bash
       run: |
-        echo "Setting execute permissions for gradlew..."
         chmod +x ./gradlew
         ls -la gradlew
 
-    # 🧩 NEW STEP — automatically fix Spotless formatting issues
+    # 4️⃣ Auto-fix Spotless formatting issues
     - name: Apply Spotless formatting
       shell: bash
-      run: |
-        echo "Running Spotless auto-format..."
-        ./gradlew spotlessApply
-        echo "✓ Spotless formatting applied successfully"
+      run: ./gradlew spotlessApply
 
+    # 5️⃣ Build project and generate Jacoco XML report
     - name: Build project with tests and coverage
       shell: bash
       run: |
-        echo "Building project with tests and coverage..."
         ./gradlew clean build jacocoTestReport
-        echo "✓ Build with tests completed"
 
+    # 6️⃣ Run SonarQube Analysis (using sonar.token instead of sonar.login)
     - name: Run SonarQube Analysis
       shell: bash
       env:
@@ -82,16 +81,13 @@ runs:
           "-Dsonar.qualitygate.wait=true"
           "-Dsonar.coverage.jacoco.xmlReportPaths=build/reports/jacoco/test/jacocoTestReport.xml"
           "-Dsonar.java.libraries=build/libs/*.jar"
+          "-Dsonar.host.url=$SONAR_HOST_URL"
+          "-Dsonar.token=$SONAR_TOKEN"
         )
         
-        echo "SonarQube parameters:"
-        for param in "${PARAMS[@]}"; do
-          echo "  $param"
-        done
-        
         ./gradlew sonar "${PARAMS[@]}"
-        echo "✓ SonarQube analysis completed successfully!"
 
+    # 7️⃣ Print a summary
     - name: SonarQube Analysis Summary
       shell: bash
       run: |
