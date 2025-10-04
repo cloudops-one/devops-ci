@@ -74,7 +74,7 @@ runs:
           -Dsonar.java.libraries="build/libs/*.jar" \
           -Dsonar.gradle.skipCompile=true \
           -Dsonar.sourceEncoding="UTF-8" \
-          -Dsonar.qualitygate.wait=true 
+          -Dsonar.qualitygate.wait=true
 
     - name: SonarQube Analysis Summary
       shell: bash
