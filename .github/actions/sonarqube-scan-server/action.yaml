@@ -29,12 +29,12 @@ runs:
   using: 'composite'
   steps:
     - name: Checkout code
-      uses: cloudops-one/checkout@v4
+      uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
     - name: Set up JDK 21
-      uses: cloudops-one/setup-java@v4
+      uses: actions/setup-java@v4
       with:
         java-version: '21'
         distribution: 'temurin'
@@ -51,9 +51,6 @@ runs:
 
     - name: Build and test with coverage
       shell: bash
-      env:
-        SONAR_TOKEN: ${{ inputs.sonar-token }}
-        SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
       run: |
         ./gradlew clean test jacocoTestReport --no-daemon
 
@@ -75,7 +72,7 @@ runs:
         SONAR_TOKEN: ${{ inputs.sonar-token }}
         SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
       run: |
-        ./gradlew sonarqube \
+        ./gradlew sonar \
           -Dsonar.branch.name="${{ inputs.branch-name }}" \
           -Dsonar.projectVersion="${{ inputs.docker-tag }}" \
           --no-daemon
