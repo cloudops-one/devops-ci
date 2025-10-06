@@ -23,18 +23,45 @@ inputs:
   sources-path:
     default: 'src'
     required: false
+  use-existing-build:
+    description: 'Use existing build artifacts instead of rebuilding'
+    required: false
+    default: 'false'
 
 runs:
   using: 'composite'
   steps:
     - name: Checkout code
       uses: cloudops-one/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for blame information
 
     - name: Setup Java
       uses: cloudops-one/setup-java@v4
       with:
         java-version: '21'
         distribution: 'temurin'
+
+    - name: Run tests and generate coverage (if not using existing build)
+      if: inputs.use-existing-build != 'true'
+      run: |
+        chmod +x ./gradlew
+        ./gradlew clean test jacocoTestReport --no-daemon
+      shell: bash
+
+    - name: Verify JaCoCo report exists
+      run: |
+        echo "=== Checking for JaCoCo XML report ==="
+        if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
+          echo "✅ JaCoCo XML report found"
+          ls -la build/reports/jacoco/test/jacocoTestReport.xml
+        else
+          echo "❌ JaCoCo XML report missing"
+          echo "Available JaCoCo files:"
+          find build -name "*jacoco*" -type f
+          exit 1
+        fi
+      shell: bash
 
     - name: Run SonarQube Scan
       env:
@@ -46,5 +73,7 @@ runs:
           -Dsonar.projectKey="${{ inputs.project-key }}" \
           -Dsonar.projectName="${{ inputs.project-name }}" \
           -Dsonar.projectVersion="${{ inputs.docker-tag }}" \
+          -Dsonar.coverage.jacoco.xmlReportPaths=build/reports/jacoco/test/jacocoTestReport.xml \
+          -Dsonar.gradle.skipCompile=true \
           --no-daemon
       shell: bash
