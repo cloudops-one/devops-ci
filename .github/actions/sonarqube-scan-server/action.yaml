@@ -1,6 +1,5 @@
-# In your sonarqube-scan-server action, change it to:
 name: 'SonarQube Scan'
-description: 'SonarQube code quality scanning using existing build artifacts'
+description: 'SonarQube code quality scanning with JaCoCo report generation'
 
 inputs:
   sonar-token:
@@ -22,16 +21,10 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Checkout code
+    - name: Checkout
       uses: cloudops-one/checkout@v4
       with:
         fetch-depth: 0
-
-    - name: Download build artifacts
-      uses: cloudops-one/download-artifact@v4
-      with:
-        name: java-build-artifacts
-        path: ./
 
     - name: Set up JDK 21
       uses: cloudops-one/setup-java@v4
@@ -40,16 +33,39 @@ runs:
         distribution: 'temurin'
         cache: 'gradle'
 
-    - name: Verify JaCoCo report exists
+    - name: Grant execute permissions for Gradle
+      run: chmod +x ./gradlew
+      shell: bash
+
+    - name: Apply Spotless Formatting
+      run: ./gradlew spotlessApply --no-daemon
+      shell: bash
+
+    - name: Generate JaCoCo XML report
       run: |
-        echo "=== Checking for JaCoCo report ==="
+        echo "=== Generating JaCoCo XML report ==="
+        ./gradlew jacocoTestReport --no-daemon
+        
+        echo "=== Verifying JaCoCo report ==="
         if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
-          echo "✅ JaCoCo report found"
-          ls -la build/reports/jacoco/test/
+          echo "✅ JaCoCo XML report generated successfully"
+          ls -la build/reports/jacoco/test/jacocoTestReport.xml
         else
-          echo "=== Searching for JaCoCo files ==="
-          find . -name "*jacoco*" -type f | head -20
-          echo "❌ JaCoCo report not found in expected location"
+          echo "❌ JaCoCo XML report still missing"
+          echo "Available jacoco files:"
+          find . -name "*jacoco*" -type f
+          echo "Trying alternative approach..."
+          # Try clean test then report
+          ./gradlew clean test jacocoTestReport --no-daemon
+        fi
+      shell: bash
+
+    - name: Verify JaCoCo Report
+      run: |
+        if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
+          echo "✅ JaCoCo report found and ready for SonarQube"
+        else
+          echo "❌ JaCoCo report missing after generation attempts"
           exit 1
         fi
       shell: bash
