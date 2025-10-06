@@ -17,11 +17,10 @@ spec:
     spec:
       containers:
         - name: irai-yoga-v1-admin-live
-          image: harbor.cloudops.terv.pro/portal-irai-yoga/admin:live
+          image: harbor.cloudops.terv.pro/portal-irai-yoga/admin:TAG_PLACEHOLDER
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
-          # Removed envFrom - ConfigMap not needed for VITE_API_BASE_URL
           resources:
             limits:
               cpu: "2"
