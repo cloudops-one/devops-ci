@@ -35,9 +35,11 @@ runs:
 
     - name: Grant execute permissions for Gradle
       run: chmod +x ./gradlew
+      shell: bash
 
     - name: Clean and Build (compile + test + coverage)
       run: ./gradlew clean build jacocoTestReport --no-daemon --stacktrace
+      shell: bash
 
     - name: Verify JaCoCo Report
       run: |
@@ -47,6 +49,7 @@ runs:
           echo "❌ JaCoCo report missing"
           exit 1
         fi
+      shell: bash
 
     - name: SonarQube Scan
       env:
@@ -59,6 +62,7 @@ runs:
           -Dsonar.projectVersion="${{ inputs.docker-tag }}" \
           -Dsonar.branch.name="${{ inputs.branch-name }}" \
           --no-daemon --stacktrace --info
+      shell: bash
 
     - name: Summary
       run: |
@@ -67,3 +71,4 @@ runs:
         echo "Key: ${{ inputs.project-key }}"
         echo "Branch: ${{ inputs.branch-name }}"
         echo "Version: ${{ inputs.docker-tag }}"
+      shell: bash
