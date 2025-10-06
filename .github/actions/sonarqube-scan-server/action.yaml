@@ -45,7 +45,6 @@ runs:
         ./gradlew sonar \
           -Dsonar.projectKey="${{ inputs.project-key }}" \
           -Dsonar.projectName="${{ inputs.project-name }}" \
-          -Dsonar.projectVersion="${{ inputs.docker-tool }}" \
-          -Dsonar.branch.name="${{ inputs.branch-name }}" \
+          -Dsonar.projectVersion="${{ inputs.docker-tag }}" \
           --no-daemon
       shell: bash
