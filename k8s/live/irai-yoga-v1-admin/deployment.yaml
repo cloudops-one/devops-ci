@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: irai-yoga-v1-admin-stage
-  namespace: irai-yoga-v1-stage
+  name: irai-yoga-v1-admin-live
+  namespace: irai-yoga-v1-live
   labels:
-    app: irai-yoga-v1-admin-stage
+    app: irai-yoga-v1-admin-live
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: irai-yoga-v1-admin-stage
+      app: irai-yoga-v1-admin-live
   template:
     metadata:
       labels:
-        app: irai-yoga-v1-admin-stage
+        app: irai-yoga-v1-admin-live
     spec:
       containers:
-        - name: irai-yoga-v1-admin-stage
-          image: harbor.cloudops.terv.pro/portal-irai-yoga/admin:stage
+        - name: irai-yoga-v1-admin-live
+          image: harbor.cloudops.terv.pro/portal-irai-yoga/admin:live
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
