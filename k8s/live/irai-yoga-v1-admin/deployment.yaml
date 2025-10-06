@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: irai-yoga-v1-admin-stage
+  namespace: irai-yoga-v1-stage
+  labels:
+    app: irai-yoga-v1-admin-stage
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: irai-yoga-v1-admin-stage
+  template:
+    metadata:
+      labels:
+        app: irai-yoga-v1-admin-stage
+    spec:
+      containers:
+        - name: irai-yoga-v1-admin-stage
+          image: harbor.cloudops.terv.pro/portal-irai-yoga/admin:stage
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          # Removed envFrom - ConfigMap not needed for VITE_API_BASE_URL
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+            requests:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsGroup: 1001
+            runAsNonRoot: true
+            runAsUser: 1001
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 1
+      imagePullSecrets:
+        - name: harbor-secret
