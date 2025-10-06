@@ -1,19 +1,25 @@
 name: 'SonarQube Scan'
-description: 'SonarQube code quality scanning with JaCoCo report generation'
+description: 'SonarQube code quality scanning'
 
 inputs:
   sonar-token:
     required: true
+    description: 'SonarQube token'
   sonar-host-url:
     required: true
+    description: 'SonarQube server URL'
   project-key:
     required: true
+    description: 'SonarQube project key'
   project-name:
     required: true
+    description: 'SonarQube project name'
   docker-tag:
     required: true
+    description: 'Docker tag for version'
   branch-name:
     required: true
+    description: 'Git branch name'
   sources-path:
     default: 'src'
     required: false
@@ -21,86 +27,25 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Checkout
+    - name: Checkout code
       uses: cloudops-one/checkout@v4
-      with:
-        fetch-depth: 0
 
-    - name: Set up JDK 21
+    - name: Setup Java
       uses: cloudops-one/setup-java@v4
       with:
         java-version: '21'
         distribution: 'temurin'
-        cache: 'gradle'
 
-    - name: Grant execute permissions for Gradle
-      run: chmod +x ./gradlew
-      shell: bash
-
-    - name: Apply Spotless Formatting
-      run: ./gradlew spotlessApply --no-daemon
-      shell: bash
-
-    - name: Configure JaCoCo for XML reports
-      run: |
-        echo "=== Configuring JaCoCo to generate XML reports ==="
-        
-        # Create a temporary gradle script to configure XML reports
-        cat >> jacoco-xml-config.gradle << 'EOF'
-jacocoTestReport {
-    reports {
-        xml.required = true
-        xml.outputLocation = file("${buildDir}/reports/jacoco/test/jacocoTestReport.xml")
-        html.required = true
-        csv.required = false
-    }
-}
-EOF
-        
-        echo "=== Running tests with XML configuration ==="
-        ./gradlew clean test jacocoTestReport -I jacoco-xml-config.gradle --no-daemon
-        
-        echo "=== Checking for XML report ==="
-        if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
-          echo "✅ JaCoCo XML report generated successfully"
-          ls -la build/reports/jacoco/test/jacocoTestReport.xml
-        else
-          echo "⚠️ XML report still not generated, but execution data exists"
-          echo "Available JaCoCo files:"
-          find build -name "*jacoco*" -type f
-        fi
-      shell: bash
-
-    - name: SonarQube Scan (with execution data fallback)
+    - name: Run SonarQube Scan
       env:
         SONAR_TOKEN: ${{ inputs.sonar-token }}
         SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
       run: |
-        echo "=== Running SonarQube Scan ==="
-        
-        # Check if XML report exists
-        if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
-          echo "Using JaCoCo XML report for coverage"
-          XML_REPORT_PATH="build/reports/jacoco/test/jacocoTestReport.xml"
-        else
-          echo "Using JaCoCo execution data for coverage"
-          XML_REPORT_PATH="build/jacoco/test.exec"
-        fi
-        
+        chmod +x ./gradlew
         ./gradlew sonar \
           -Dsonar.projectKey="${{ inputs.project-key }}" \
           -Dsonar.projectName="${{ inputs.project-name }}" \
-          -Dsonar.projectVersion="${{ inputs.docker-tag }}" \
+          -Dsonar.projectVersion="${{ inputs.docker-tool }}" \
           -Dsonar.branch.name="${{ inputs.branch-name }}" \
-          -Dsonar.coverage.jacoco.xmlReportPaths=$XML_REPORT_PATH \
           --no-daemon
-      shell: bash
-
-    - name: Summary
-      run: |
-        echo "=== ✅ SonarQube Scan Complete ==="
-        echo "Project: ${{ inputs.project-name }}"
-        echo "Key: ${{ inputs.project-key }}"
-        echo "Branch: ${{ inputs.branch-name }}"
-        echo "Version: ${{ inputs.docker-tag }}"
       shell: bash
