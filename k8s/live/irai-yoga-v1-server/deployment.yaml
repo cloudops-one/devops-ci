@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: irai-yoga-v1-server-stage
+  namespace: irai-yoga-v1-stage
+  labels:
+    app: irai-yoga-v1-stage-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: irai-yoga-v1-stage-server
+  template:
+    metadata:
+      labels:
+        app: irai-yoga-v1-stage-server
+    spec:
+      containers:
+        - name: irai-yoga-v1-stage-server
+          image: harbor.cloudops.terv.pro/server-irai-yoga/server:stage
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: stage
+            - name: SPRING_CLOUD_VAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: irai-yoga-vault-token
+                  key: SPRING_CLOUD_VAULT_TOKEN
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+            requests:
+              cpu: "500m"
+              memory: 1500Mi
+      imagePullSecrets:
+        - name: harbor-secret
