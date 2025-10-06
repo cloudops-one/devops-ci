@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: irai-yoga-v1-admin-stage
-          image: harbor.cloudops.terv.pro/portal-irai-yoga/admin:stage
+          image: harbor.cloudops.terv.pro/portal-irai-yoga/admin:TAG_PLACEHOLDER
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
