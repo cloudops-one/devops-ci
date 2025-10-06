@@ -29,8 +29,6 @@ runs:
   steps:
     - name: Checkout code
       uses: cloudops-one/checkout@v4
-      with:
-        fetch-depth: 0  # Full history for blame information
 
     - name: Setup Java
       uses: cloudops-one/setup-java@v4
@@ -38,88 +36,15 @@ runs:
         java-version: '21'
         distribution: 'temurin'
 
-    - name: Configure JaCoCo for XML reports
-      run: |
-        echo "=== Configuring JaCoCo to generate XML reports ==="
-        
-        # Create a Gradle init script to force XML reports
-        cat > jacoco-xml.gradle << 'EOF'
-jacocoTestReport {
-    reports {
-        xml.required = true
-        html.required = true
-        csv.required = false
-    }
-}
-EOF
-        
-        echo "Gradle init script created for XML reports"
-      shell: bash
-
-    - name: Run tests and generate JaCoCo reports with XML
-      run: |
-        chmod +x ./gradlew
-        echo "=== Running tests with XML JaCoCo configuration ==="
-        ./gradlew clean test jacocoTestReport -I jacoco-xml.gradle --no-daemon
-        
-        echo "=== Checking generated reports ==="
-        find build -name "*jacoco*" -type f
-      shell: bash
-
-    - name: Generate XML report using JaCoCo CLI if needed
-      run: |
-        echo "=== Final XML report check ==="
-        
-        if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
-          echo "✅ JaCoCo XML report generated via Gradle"
-        else
-          echo "Gradle XML generation failed, using JaCoCo CLI..."
-          
-          # Check if .exec file exists
-          if [ -f "build/jacoco/test.exec" ]; then
-            echo "Found test.exec file, generating XML with JaCoCo CLI"
-            
-            # Download JaCoCo CLI
-            wget -q -O jacococli.jar https://repo1.maven.org/maven2/org/jacoco/org.jacoco.cli/0.8.10/org.jacoco.cli-0.8.10-nodeps.jar
-            
-            # Create directory
-            mkdir -p build/reports/jacoco/test/
-            
-            # Generate XML report
-            java -jar jacococli.jar report build/jacoco/test.exec \
-              --classfiles build/classes/java/main \
-              --sourcefiles src/main/java \
-              --xml build/reports/jacoco/test/jacocoTestReport.xml
-              
-            echo "XML report generated using JaCoCo CLI"
-          else
-            echo "❌ No test.exec file found either"
-            exit 1
-          fi
-        fi
-        
-        # Final verification
-        if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
-          echo "✅ JaCoCo XML report verified"
-          ls -la build/reports/jacoco/test/jacocoTestReport.xml
-        else
-          echo "❌ JaCoCo XML report generation failed completely"
-          exit 1
-        fi
-      shell: bash
-
     - name: Run SonarQube Scan
       env:
         SONAR_TOKEN: ${{ inputs.sonar-token }}
         SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
       run: |
         chmod +x ./gradlew
-        echo "=== Running SonarQube Scan with coverage ==="
         ./gradlew sonar \
           -Dsonar.projectKey="${{ inputs.project-key }}" \
           -Dsonar.projectName="${{ inputs.project-name }}" \
           -Dsonar.projectVersion="${{ inputs.docker-tag }}" \
-          -Dsonar.coverage.jacoco.xmlReportPaths=build/reports/jacoco/test/jacocoTestReport.xml \
-          -Dsonar.gradle.skipCompile=true \
           --no-daemon
       shell: bash
