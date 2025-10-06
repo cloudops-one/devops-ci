@@ -45,10 +45,6 @@ runs:
       run: |
         echo "=== Configuring JaCoCo to generate XML reports ==="
         
-        # Check current JaCoCo configuration
-        echo "=== Current JaCoCo configuration ==="
-        ./gradlew jacocoTestReport --dry-run --no-daemon
-        
         # Create a temporary gradle script to configure XML reports
         cat >> jacoco-xml-config.gradle << 'EOF'
 jacocoTestReport {
