@@ -41,31 +41,27 @@ runs:
       run: ./gradlew spotlessApply --no-daemon
       shell: bash
 
-    - name: Generate JaCoCo XML report
+    - name: Generate JaCoCo XML report with tests
       run: |
-        echo "=== Generating JaCoCo XML report ==="
-        ./gradlew jacocoTestReport --no-daemon
+        echo "=== Running tests and generating JaCoCo report ==="
+        ./gradlew clean test jacocoTestReport --no-daemon
         
-        echo "=== Verifying JaCoCo report ==="
+        echo "=== Searching for JaCoCo XML report ==="
+        find . -name "*.xml" -path "*/jacoco/*" | head -10
+        
+        # Check multiple possible locations
         if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
-          echo "✅ JaCoCo XML report generated successfully"
-          ls -la build/reports/jacoco/test/jacocoTestReport.xml
+          echo "✅ JaCoCo XML report found at standard location"
+        elif [ -f "build/reports/jacoco/jacocoTestReport.xml" ]; then
+          echo "✅ JaCoCo XML report found at alternative location"
+        elif [ -f "build/jacoco/test/jacocoTestReport.xml" ]; then
+          echo "✅ JaCoCo XML report found in jacoco directory"
         else
-          echo "❌ JaCoCo XML report still missing"
-          echo "Available jacoco files:"
-          find . -name "*jacoco*" -type f
-          echo "Trying alternative approach..."
-          # Try clean test then report
-          ./gradlew clean test jacocoTestReport --no-daemon
-        fi
-      shell: bash
-
-    - name: Verify JaCoCo Report
-      run: |
-        if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
-          echo "✅ JaCoCo report found and ready for SonarQube"
-        else
-          echo "❌ JaCoCo report missing after generation attempts"
+          echo "=== Debug: All build files ==="
+          find build -name "*.xml" -type f | head -20
+          echo "=== Debug: Build directory structure ==="
+          ls -la build/ || echo "No build directory"
+          echo "❌ JaCoCo XML report not found in any expected location"
           exit 1
         fi
       shell: bash
