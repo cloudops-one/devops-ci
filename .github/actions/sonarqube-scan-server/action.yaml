@@ -1,5 +1,6 @@
+# In your sonarqube-scan-server action, change it to:
 name: 'SonarQube Scan'
-description: 'Enhanced SonarQube code quality scanning with full Gradle compatibility'
+description: 'SonarQube code quality scanning using existing build artifacts'
 
 inputs:
   sonar-token:
@@ -21,10 +22,16 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Checkout
+    - name: Checkout code
       uses: cloudops-one/checkout@v4
       with:
         fetch-depth: 0
+
+    - name: Download build artifacts
+      uses: cloudops-one/download-artifact@v4
+      with:
+        name: java-build-artifacts
+        path: ./
 
     - name: Set up JDK 21
       uses: cloudops-one/setup-java@v4
@@ -33,25 +40,16 @@ runs:
         distribution: 'temurin'
         cache: 'gradle'
 
-    - name: Grant execute permissions for Gradle
-      run: chmod +x ./gradlew
-      shell: bash
-
-    # Add this step to apply formatting fixes automatically
-    - name: Apply Spotless Formatting
-      run: ./gradlew spotlessApply --no-daemon
-      shell: bash
-
-    - name: Clean and Build (compile + test + coverage)
-      run: ./gradlew clean build jacocoTestReport --no-daemon --stacktrace
-      shell: bash
-
-    - name: Verify JaCoCo Report
+    - name: Verify JaCoCo report exists
       run: |
+        echo "=== Checking for JaCoCo report ==="
         if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
           echo "✅ JaCoCo report found"
+          ls -la build/reports/jacoco/test/
         else
-          echo "❌ JaCoCo report missing"
+          echo "=== Searching for JaCoCo files ==="
+          find . -name "*jacoco*" -type f | head -20
+          echo "❌ JaCoCo report not found in expected location"
           exit 1
         fi
       shell: bash
@@ -66,7 +64,7 @@ runs:
           -Dsonar.projectName="${{ inputs.project-name }}" \
           -Dsonar.projectVersion="${{ inputs.docker-tag }}" \
           -Dsonar.branch.name="${{ inputs.branch-name }}" \
-          --no-daemon --stacktrace --info
+          --no-daemon
       shell: bash
 
     - name: Summary
