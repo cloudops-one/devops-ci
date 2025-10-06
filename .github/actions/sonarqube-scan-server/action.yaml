@@ -37,6 +37,11 @@ runs:
       run: chmod +x ./gradlew
       shell: bash
 
+    # Add this step to apply formatting fixes automatically
+    - name: Apply Spotless Formatting
+      run: ./gradlew spotlessApply --no-daemon
+      shell: bash
+
     - name: Clean and Build (compile + test + coverage)
       run: ./gradlew clean build jacocoTestReport --no-daemon --stacktrace
       shell: bash
