@@ -41,72 +41,62 @@ runs:
       run: ./gradlew spotlessApply --no-daemon
       shell: bash
 
-    - name: Debug JaCoCo configuration
+    - name: Configure JaCoCo for XML reports
       run: |
-        echo "=== Checking Gradle JaCoCo configuration ==="
-        ./gradlew properties --no-daemon | grep jacoco || echo "No jacoco properties found"
+        echo "=== Configuring JaCoCo to generate XML reports ==="
         
-        echo "=== Checking available tasks ==="
-        ./gradlew tasks --no-daemon | grep jacoco || echo "No jacoco tasks found"
+        # Check current JaCoCo configuration
+        echo "=== Current JaCoCo configuration ==="
+        ./gradlew jacocoTestReport --dry-run --no-daemon
         
-        echo "=== Checking build directory before tests ==="
-        ls -la build/ || echo "No build directory"
-      shell: bash
-
-    - name: Run tests with JaCoCo and generate report
-      run: |
-        echo "=== Running tests with coverage ==="
-        ./gradlew clean test jacocoTestReport --no-daemon --info
+        # Create a temporary gradle script to configure XML reports
+        cat >> jacoco-xml-config.gradle << 'EOF'
+jacocoTestReport {
+    reports {
+        xml.required = true
+        xml.outputLocation = file("${buildDir}/reports/jacoco/test/jacocoTestReport.xml")
+        html.required = true
+        csv.required = false
+    }
+}
+EOF
         
-        echo "=== Checking for JaCoCo files after report generation ==="
-        find . -name "*jacoco*" -type f
+        echo "=== Running tests with XML configuration ==="
+        ./gradlew clean test jacocoTestReport -I jacoco-xml-config.gradle --no-daemon
         
-        echo "=== Build reports directory ==="
-        ls -la build/reports/ || echo "No reports directory"
-        
-        echo "=== Checking if jacocoTestReport actually exists ==="
-        ./gradlew help --task jacocoTestReport --no-daemon || echo "jacocoTestReport task not available"
-      shell: bash
-
-    - name: Generate JaCoCo XML report manually if needed
-      run: |
-        echo "=== Checking if we need to generate XML manually ==="
-        
-        # Check if XML report exists
+        echo "=== Checking for XML report ==="
         if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
-          echo "✅ JaCoCo XML report exists"
+          echo "✅ JaCoCo XML report generated successfully"
+          ls -la build/reports/jacoco/test/jacocoTestReport.xml
         else
-          echo "JaCoCo XML report missing, checking for execution data..."
-          
-          # Check for .exec file
-          if [ -f "build/jacoco/test.exec" ]; then
-            echo "Found test.exec file, SonarQube can use this directly"
-          else
-            echo "No test.exec file found either"
-          fi
-          
-          # List all files in build directory for debugging
-          echo "=== All files in build directory ==="
-          find build -type f | head -30
+          echo "⚠️ XML report still not generated, but execution data exists"
+          echo "Available JaCoCo files:"
+          find build -name "*jacoco*" -type f
         fi
       shell: bash
 
-    - name: SonarQube Scan (using execution data if XML missing)
+    - name: SonarQube Scan (with execution data fallback)
       env:
         SONAR_TOKEN: ${{ inputs.sonar-token }}
         SONAR_HOST_URL: ${{ inputs.sonar-host-url }}
       run: |
         echo "=== Running SonarQube Scan ==="
         
-        # Run sonar with explicit JaCoCo configuration
+        # Check if XML report exists
+        if [ -f "build/reports/jacoco/test/jacocoTestReport.xml" ]; then
+          echo "Using JaCoCo XML report for coverage"
+          XML_REPORT_PATH="build/reports/jacoco/test/jacocoTestReport.xml"
+        else
+          echo "Using JaCoCo execution data for coverage"
+          XML_REPORT_PATH="build/jacoco/test.exec"
+        fi
+        
         ./gradlew sonar \
           -Dsonar.projectKey="${{ inputs.project-key }}" \
           -Dsonar.projectName="${{ inputs.project-name }}" \
           -Dsonar.projectVersion="${{ inputs.docker-tag }}" \
           -Dsonar.branch.name="${{ inputs.branch-name }}" \
-          -Dsonar.coverage.jacoco.xmlReportPaths=build/reports/jacoco/test/jacocoTestReport.xml \
-          -Dsonar.coverage.jacoco.xmlReportPaths=build/reports/jacoco/jacocoTestReport.xml \
-          -Dsonar.coverage.jacoco.xmlReportPaths=build/jacoco/test/jacocoTestReport.xml \
+          -Dsonar.coverage.jacoco.xmlReportPaths=$XML_REPORT_PATH \
           --no-daemon
       shell: bash
 
