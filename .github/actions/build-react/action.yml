@@ -1,21 +1,21 @@
 name: React Build
-description: Builds a React (Vite) application with environment-based configuration.
+description: Centralized React (Vite) build action with automatic environment detection
 
 inputs:
   node-version:
     description: 'The Node.js version to use'
     required: true
   skip-husky:
-    description: 'Skip the Husky git hooks'
+    description: 'Skip Husky git hooks'
     required: false
     default: 'false'
   generate-lockfile:
-    description: 'Generate a lockfile for npm'
+    description: 'Generate package-lock.json'
     required: false
     default: 'true'
   environment:
-    description: 'Deployment environment (live, stage, preview)'
-    required: true
+    description: 'Optional environment (live, stage, preview). Auto-detected from branch/tag if not provided'
+    required: false
 
 runs:
   using: "composite"
@@ -32,18 +32,38 @@ runs:
     # 2️⃣ Install dependencies
     # -------------------------------
     - name: Install dependencies
-      run: npm install
-      shell: bash
-
-    # -------------------------------
-    # 3️⃣ Dynamically configure .env
-    # -------------------------------
-    - name: Configure environment for Vite build
       shell: bash
       run: |
-        ENVIRONMENT="${{ inputs.environment }}"
-        echo "🌍 Setting VITE_API_BASE_URL for environment: $ENVIRONMENT"
+        if [ -f "package-lock.json" ]; then
+          npm ci
+        else
+          npm install
+        fi
 
+    # -------------------------------
+    # 3️⃣ Determine environment and write .env
+    # -------------------------------
+    - name: Configure VITE environment
+      shell: bash
+      run: |
+        # Read input environment
+        ENVIRONMENT="${{ inputs.environment }}"
+
+        # Fallback to auto-detect if empty
+        if [ -z "$ENVIRONMENT" ]; then
+          echo "⚠️ Environment input not provided. Auto-detecting from branch/tag..."
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            ENVIRONMENT="live"
+          elif [[ "$GITHUB_REF" == refs/heads/main ]]; then
+            ENVIRONMENT="stage"
+          else
+            ENVIRONMENT="preview"
+          fi
+        fi
+
+        echo "🌍 Selected environment: $ENVIRONMENT"
+
+        # Determine API base URL
         case "$ENVIRONMENT" in
           live)
             BASE_URL="https://server.live.v1.irai.yoga/api/"
@@ -51,7 +71,7 @@ runs:
           stage)
             BASE_URL="https://server.stage.v1.irai.yoga/api/"
             ;;
-          *)
+          preview|*)
             BASE_URL="https://server.preview.v1.irai.yoga/api/"
             ;;
         esac
@@ -61,39 +81,43 @@ runs:
         cat .env
 
     # -------------------------------
-    # 4️⃣ Lint and autofix
+    # 4️⃣ Optional: Skip Husky hooks
+    # -------------------------------
+    - name: Skip Husky hooks
+      if: ${{ inputs.skip-husky == 'true' }}
+      shell: bash
+      run: |
+        if [ -f .husky/pre-commit ]; then
+          mv .husky/pre-commit .husky/pre-commit.bak
+          echo "Husky pre-commit hook temporarily disabled"
+        fi
+
+    # -------------------------------
+    # 5️⃣ Lint and autofix
     # -------------------------------
     - name: Run lint and autofix
       run: npm run lint --fix
       shell: bash
 
     # -------------------------------
-    # 5️⃣ Build React app
+    # 6️⃣ Build React app
     # -------------------------------
-    - name: Run build
+    - name: Build React (Vite) application
       run: npm run build
       shell: bash
 
     # -------------------------------
-    # 6️⃣ Upload build artifacts
+    # 7️⃣ Upload build artifacts
     # -------------------------------
-    - name: Upload production-ready build files
+    - name: Upload build artifacts
       uses: cloudops-one/upload-artifact@main
       with:
         name: build-artifact
         path: dist
 
     # -------------------------------
-    # 7️⃣ Optional helpers
+    # 8️⃣ Optional: generate lockfile
     # -------------------------------
-    - name: Skip Husky
-      if: ${{ inputs.skip-husky == 'true' }}
-      run: |
-        if [ -f .husky/pre-commit ]; then
-          mv .husky/pre-commit .husky/pre-commit.bak
-        fi
-      shell: bash
-
     - name: Generate lockfile
       if: ${{ inputs.generate-lockfile == 'true' }}
       run: npm install --package-lock-only
