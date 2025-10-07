@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: irai-yoga-v1-admin
+  name: irai-yoga-v1-admin-preview
   namespace: irai-yoga-v1-preview
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: irai-yoga-v1-admin
+      app: irai-yoga-v1-admin-preview
   template:
     metadata:
       labels:
-        app: irai-yoga-v1-admin
+        app: irai-yoga-v1-admin-preview
     spec:
       containers:
-        - name: irai-yoga-v1-admin
+        - name: irai-yoga-v1-admin-preview
           image: harbor.cloudops.terv.pro/portal-irai-yoga/admin:TAG_PLACEHOLDER
           imagePullPolicy: Always
           ports:
