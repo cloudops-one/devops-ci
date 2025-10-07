@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: irai-yoga-v1-preview-server
-          image: harbor.cloudops.terv.pro/portal-irai-yoga/server:TAG_PLACEHOLDER
+          image: harbor.cloudops.terv.pro/server-irai-yoga/server:TAG_PLACEHOLDER
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
