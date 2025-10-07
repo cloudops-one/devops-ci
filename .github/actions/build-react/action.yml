@@ -1,5 +1,5 @@
 name: React Build
-description: Builds a React application.
+description: Builds a React (Vite) application with environment-based configuration.
 
 inputs:
   node-version:
@@ -13,33 +13,74 @@ inputs:
     description: 'Generate a lockfile for npm'
     required: false
     default: 'true'
+  environment:
+    description: 'Deployment environment (live, stage, preview)'
+    required: true
 
 runs:
   using: "composite"
   steps:
+    # -------------------------------
+    # 1️⃣ Setup Node
+    # -------------------------------
     - name: Use Node.js ${{ inputs.node-version }}
       uses: cloudops-one/setup-node@v1
       with:
         node-version: ${{ inputs.node-version }}
 
+    # -------------------------------
+    # 2️⃣ Install dependencies
+    # -------------------------------
     - name: Install dependencies
       run: npm install
       shell: bash
 
+    # -------------------------------
+    # 3️⃣ Dynamically configure .env
+    # -------------------------------
+    - name: Configure environment for Vite build
+      shell: bash
+      run: |
+        echo "🌍 Setting VITE_API_BASE_URL for environment: ${{ inputs.environment }}"
+
+        if [[ "${{ inputs.environment }}" == "live" ]]; then
+          BASE_URL="https://server.live.v1.irai.yoga/api/"
+        elif [[ "${{ inputs.environment }}" == "stage" ]]; then
+          BASE_URL="https://server.stage.v1.irai.yoga/api/"
+        else
+          BASE_URL="https://server.preview.v1.irai.yoga/api/"
+        fi
+
+        echo "VITE_API_BASE_URL=$BASE_URL" > .env
+        echo "✅ .env file content:"
+        cat .env
+
+    # -------------------------------
+    # 4️⃣ Lint and autofix
+    # -------------------------------
     - name: Run lint and autofix
       run: npm run lint --fix
       shell: bash
 
+    # -------------------------------
+    # 5️⃣ Build React app
+    # -------------------------------
     - name: Run build
       run: npm run build
       shell: bash
 
+    # -------------------------------
+    # 6️⃣ Upload build artifacts
+    # -------------------------------
     - name: Upload production-ready build files
       uses: cloudops-one/upload-artifact@main
       with:
         name: build-artifact
         path: dist
 
+    # -------------------------------
+    # 7️⃣ Optional helpers
+    # -------------------------------
     - name: Skip Husky
       if: ${{ inputs.skip-husky == 'true' }}
       run: |
