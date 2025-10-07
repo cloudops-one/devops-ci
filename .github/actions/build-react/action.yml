@@ -41,15 +41,20 @@ runs:
     - name: Configure environment for Vite build
       shell: bash
       run: |
-        echo "🌍 Setting VITE_API_BASE_URL for environment: ${{ inputs.environment }}"
+        ENVIRONMENT="${{ inputs.environment }}"
+        echo "🌍 Setting VITE_API_BASE_URL for environment: $ENVIRONMENT"
 
-        if [[ "${{ inputs.environment }}" == "live" ]]; then
-          BASE_URL="https://server.live.v1.irai.yoga/api/"
-        elif [[ "${{ inputs.environment }}" == "stage" ]]; then
-          BASE_URL="https://server.stage.v1.irai.yoga/api/"
-        else
-          BASE_URL="https://server.preview.v1.irai.yoga/api/"
-        fi
+        case "$ENVIRONMENT" in
+          live)
+            BASE_URL="https://server.live.v1.irai.yoga/api/"
+            ;;
+          stage)
+            BASE_URL="https://server.stage.v1.irai.yoga/api/"
+            ;;
+          *)
+            BASE_URL="https://server.preview.v1.irai.yoga/api/"
+            ;;
+        esac
 
         echo "VITE_API_BASE_URL=$BASE_URL" > .env
         echo "✅ .env file content:"
