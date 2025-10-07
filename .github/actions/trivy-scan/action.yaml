@@ -7,15 +7,15 @@ inputs:
     default: 'fs'
   scan-ref:
     description: 'What to scan (directory path or image name)'
-    required: false
+    required: true
     default: '.'
   severity:
     description: 'Severity levels to check'
-    required: false
+    required: true
     default: 'CRITICAL,HIGH'
   scanners:
     description: 'Scanners to use'
-    required: false
+    required: true
     default: 'vuln,secret,config'
   ignore-unfixed:
     description: 'Ignore unfixed vulnerabilities'
