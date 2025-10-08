@@ -1,5 +1,5 @@
 name: 'Notify'
-description: 'Sends notifications to Zoho Cliq'
+description: 'Sends deployment notifications to Zoho Cliq'
 
 inputs:
   webhook-url:
@@ -11,6 +11,19 @@ inputs:
   environment:
     description: 'The environment (preview, stage, live)'
     required: true
+  status:
+    description: 'Deployment status (success, failure)'
+    required: false
+    default: 'success'
+  admin-url:
+    description: 'Admin service URL'
+    required: false
+  server-url:
+    description: 'Server service URL'
+    required: false
+  website-url:
+    description: 'Website service URL'
+    required: false
 
 runs:
   using: 'composite'
@@ -19,39 +32,79 @@ runs:
       shell: bash
       run: |
         # Escape special characters in the message
-        ESCAPED_MESSAGE=$(echo '${{ inputs.message }}' | sed 's/"/\\"/g')
+        ESCAPED_MESSAGE=$(echo '${{ inputs.message }}' | sed 's/"/\\"/g' | sed 's/\\n/\\\\n/g')
         
-        # Determine theme based on environment
-        if [ "${{ inputs.environment }}" = "live" ]; then
-          THEME="modern-inline"
+        # Determine theme and title based on environment and status
+        if [ "${{ inputs.status }}" = "success" ]; then
+          STATUS_EMOJI="✅"
+          STATUS_TEXT="SUCCESS"
+          if [ "${{ inputs.environment }}" = "live" ]; then
+            THEME="modern-inline"
+            ENV_EMOJI="🎯"
+          elif [ "${{ inputs.environment }}" = "stage" ]; then
+            THEME="modern-edge"
+            ENV_EMOJI="🔧"
+          else
+            THEME="basic"
+            ENV_EMOJI="🚀"
+          fi
+          TITLE="$STATUS_EMOJI Deployment Successful - ${{ inputs.environment }} $ENV_EMOJI"
         else
-          THEME="basic"
+          STATUS_EMOJI="❌"
+          STATUS_TEXT="FAILED"
+          THEME="modern-inline"
+          if [ "${{ inputs.environment }}" = "live" ]; then
+            ENV_EMOJI="🎯"
+          elif [ "${{ inputs.environment }}" = "stage" ]; then
+            ENV_EMOJI="🔧"
+          else
+            ENV_EMOJI="🚀"
+          fi
+          TITLE="$STATUS_EMOJI Deployment Failed - ${{ inputs.environment }} $ENV_EMOJI"
         fi
 
+        # Build the services section
+        SERVICES_SECTION=""
+        if [ -n "${{ inputs.admin-url }}" ]; then
+          SERVICES_SECTION="$SERVICES_SECTION\\n🌐 **Admin**: ${{ inputs.admin-url }}"
+        fi
+        if [ -n "${{ inputs.server-url }}" ]; then
+          SERVICES_SECTION="$SERVICES_SECTION\\n🖥️ **Server**: ${{ inputs.server-url }}"
+        fi
+        if [ -n "${{ inputs.website-url }}" ]; then
+          SERVICES_SECTION="$SERVICES_SECTION\\n📱 **Website**: ${{ inputs.website-url }}"
+        fi
+
+        # Create the final message with services if available
+        if [ -n "$SERVICES_SECTION" ]; then
+          FINAL_MESSAGE="$ESCAPED_MESSAGE$SERVICES_SECTION"
+        else
+          FINAL_MESSAGE="$ESCAPED_MESSAGE"
+        fi
+
+        # Add timestamp
+        CURRENT_TIME=$(date +'%I:%M %P')
+        CURRENT_DATE=$(date +'%b %d, %Y')
+        FINAL_MESSAGE="$FINAL_MESSAGE\\n🕒 **Time**: $CURRENT_TIME\\n📅 **Date**: $CURRENT_DATE"
+
+        # Create the JSON payload
+        JSON_PAYLOAD='{
+          "text": "'"$FINAL_MESSAGE"'",
+          "card": {
+            "title": "'"$TITLE"'",
+            "theme": "'"$THEME"'",
+            "thumbnail": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
+          }
+        }'
+
+        # Send the notification
+        echo "Sending notification to Zoho Cliq..."
         curl -X POST "${{ inputs.webhook-url }}" \
           -H "Content-Type: application/json" \
-          -d '{
-            "text": "'"$ESCAPED_MESSAGE"'",
-            "card": {
-              "title": "Deployment Notification",
-              "theme": "'"$THEME"'",
-              "thumbnail": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
-              "sections": [{
-                "title": "Details",
-                "data": [
-                  {"Repository": "'"$GITHUB_REPOSITORY"'"},
-                  {"Environment": "'"${{ inputs.environment }}"'"},
-                  {"Commit": "'"$GITHUB_SHA"'"},
-                  {"Author": "'"$GITHUB_ACTOR"'"},
-                  {"Branch/Tag": "'"$GITHUB_REF_NAME"'"}
-                ]
-              }],
-              "buttons": [{
-                "label": "View Deployment",
-                "action": {
-                  "type": "open.url",
-                  "url": "'"$GITHUB_SERVER_URL"'/'"$GITHUB_REPOSITORY"'/actions/runs/'"$GITHUB_RUN_ID"'"
-                }
-              }]
-            }
-          }'
+          -d "$JSON_PAYLOAD" \
+          --fail --silent --show-error
+
+        echo "✅ Notification sent successfully!"
+
+      env:
+        CURLOBJECT: curl
