@@ -15,15 +15,9 @@ inputs:
     description: 'Deployment status (success, failure)'
     required: false
     default: 'success'
-  admin-url:
-    description: 'Admin service URL'
-    required: false
-  server-url:
-    description: 'Server service URL'
-    required: false
-  website-url:
-    description: 'Website service URL'
-    required: false
+  service-type:
+    description: 'Service type (admin, server, website)'
+    required: true
 
 runs:
   using: 'composite'
@@ -31,80 +25,88 @@ runs:
     - name: Send notification
       shell: bash
       run: |
+        # Determine service URL based on service type and environment
+        if [ "${{ inputs.service-type }}" = "admin" ]; then
+          SERVICE_EMOJI="🌐"
+          SERVICE_NAME="Admin"
+          if [ "${{ inputs.environment }}" = "preview" ]; then
+            SERVICE_URL="https://admin.preview.v1.irai.yoga"
+          elif [ "${{ inputs.environment }}" = "stage" ]; then
+            SERVICE_URL="https://admin.stage.v1.irai.yoga"
+          else
+            SERVICE_URL="https://admin.live.v1.irai.yoga"
+          fi
+        elif [ "${{ inputs.service-type }}" = "server" ]; then
+          SERVICE_EMOJI="🖥️"
+          SERVICE_NAME="Server"
+          if [ "${{ inputs.environment }}" = "preview" ]; then
+            SERVICE_URL="https://server.preview.v1.irai.yoga"
+          elif [ "${{ inputs.environment }}" = "stage" ]; then
+            SERVICE_URL="https://server.stage.v1.irai.yoga"
+          else
+            SERVICE_URL="https://server.live.v1.irai.yoga"
+          fi
+        else
+          SERVICE_EMOJI="📱"
+          SERVICE_NAME="Website"
+          if [ "${{ inputs.environment }}" = "preview" ]; then
+            SERVICE_URL="https://website.preview.v1.irai.yoga"
+          elif [ "${{ inputs.environment }}" = "stage" ]; then
+            SERVICE_URL="https://website.stage.v1.irai.yoga"
+          else
+            SERVICE_URL="https://irai.yoga"
+          fi
+        fi
+
+        # Determine title and environment emoji
+        if [ "${{ inputs.status }}" = "success" ]; then
+          STATUS_EMOJI="✅"
+          if [ "${{ inputs.environment }}" = "live" ]; then
+            ENV_EMOJI="🎯"
+          elif [ "${{ inputs.environment }}" = "stage" ]; then
+            ENV_EMOJI="🔧"
+          else
+            ENV_EMOJI="🚀"
+          fi
+          TITLE="$STATUS_EMOJI $SERVICE_NAME Deployment Successful - ${{ inputs.environment }} $ENV_EMOJI"
+        else
+          STATUS_EMOJI="❌"
+          if [ "${{ inputs.environment }}" = "live" ]; then
+            ENV_EMOJI="🎯"
+          elif [ "${{ inputs.environment }}" = "stage" ]; then
+            ENV_EMOJI="🔧"
+          else
+            ENV_EMOJI="🚀"
+          fi
+          TITLE="$STATUS_EMOJI $SERVICE_NAME Deployment Failed - ${{ inputs.environment }} $ENV_EMOJI"
+        fi
+
         # Escape special characters in the message
         ESCAPED_MESSAGE=$(echo '${{ inputs.message }}' | sed 's/"/\\"/g' | sed 's/\\n/\\\\n/g')
         
-        # Determine theme and title based on environment and status
-        if [ "${{ inputs.status }}" = "success" ]; then
-          STATUS_EMOJI="✅"
-          STATUS_TEXT="SUCCESS"
-          if [ "${{ inputs.environment }}" = "live" ]; then
-            THEME="modern-inline"
-            ENV_EMOJI="🎯"
-          elif [ "${{ inputs.environment }}" = "stage" ]; then
-            THEME="modern-edge"
-            ENV_EMOJI="🔧"
-          else
-            THEME="basic"
-            ENV_EMOJI="🚀"
-          fi
-          TITLE="$STATUS_EMOJI Deployment Successful - ${{ inputs.environment }} $ENV_EMOJI"
-        else
-          STATUS_EMOJI="❌"
-          STATUS_TEXT="FAILED"
-          THEME="modern-inline"
-          if [ "${{ inputs.environment }}" = "live" ]; then
-            ENV_EMOJI="🎯"
-          elif [ "${{ inputs.environment }}" = "stage" ]; then
-            ENV_EMOJI="🔧"
-          else
-            ENV_EMOJI="🚀"
-          fi
-          TITLE="$STATUS_EMOJI Deployment Failed - ${{ inputs.environment }} $ENV_EMOJI"
-        fi
-
-        # Build the services section
-        SERVICES_SECTION=""
-        if [ -n "${{ inputs.admin-url }}" ]; then
-          SERVICES_SECTION="$SERVICES_SECTION\\n🌐 **Admin**: ${{ inputs.admin-url }}"
-        fi
-        if [ -n "${{ inputs.server-url }}" ]; then
-          SERVICES_SECTION="$SERVICES_SECTION\\n🖥️ **Server**: ${{ inputs.server-url }}"
-        fi
-        if [ -n "${{ inputs.website-url }}" ]; then
-          SERVICES_SECTION="$SERVICES_SECTION\\n📱 **Website**: ${{ inputs.website-url }}"
-        fi
-
-        # Create the final message with services if available
-        if [ -n "$SERVICES_SECTION" ]; then
-          FINAL_MESSAGE="$ESCAPED_MESSAGE$SERVICES_SECTION"
-        else
-          FINAL_MESSAGE="$ESCAPED_MESSAGE"
-        fi
-
-        # Add timestamp
+        # Add service URL and timestamp to message
         CURRENT_TIME=$(date +'%I:%M %P')
         CURRENT_DATE=$(date +'%b %d, %Y')
-        FINAL_MESSAGE="$FINAL_MESSAGE\\n🕒 **Time**: $CURRENT_TIME\\n📅 **Date**: $CURRENT_DATE"
+        FINAL_MESSAGE="$ESCAPED_MESSAGE\\n\\n$SERVICE_EMOJI **$SERVICE_NAME**: $SERVICE_URL\\n🕒 **Time**: $CURRENT_TIME\\n📅 **Date**: $CURRENT_DATE"
 
         # Create the JSON payload
         JSON_PAYLOAD='{
           "text": "'"$FINAL_MESSAGE"'",
           "card": {
             "title": "'"$TITLE"'",
-            "theme": "'"$THEME"'",
+            "theme": "basic",
             "thumbnail": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
           }
         }'
 
         # Send the notification
-        echo "Sending notification to Zoho Cliq..."
+        echo "Sending $SERVICE_NAME deployment notification to Zoho Cliq..."
         curl -X POST "${{ inputs.webhook-url }}" \
           -H "Content-Type: application/json" \
           -d "$JSON_PAYLOAD" \
           --fail --silent --show-error
 
-        echo "✅ Notification sent successfully!"
+        echo "✅ $SERVICE_NAME notification sent successfully!"
 
       env:
         CURLOBJECT: curl
