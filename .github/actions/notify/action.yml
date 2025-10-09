@@ -1,48 +1,33 @@
-name: 'Notify'
-description: 'Sends deployment notifications to Zoho Cliq'
-
+name: "Zoho Cliq Notification"
+description: "Send deployment notifications to Zoho Cliq"
+author: "CloudOps One"
 inputs:
   webhook-url:
-    description: 'Zoho Cliq webhook URL'
+    description: "Zoho Cliq webhook URL"
     required: true
   message:
-    description: 'Message to send'
+    description: "Notification message text"
     required: true
   environment:
-    description: 'The environment (preview, stage, live)'
+    description: "Deployment environment (preview/stage/live)"
     required: true
   status:
-    description: 'Deployment status (success, failure)'
-    required: false
-    default: 'success'
+    description: "Deployment status (success/failure)"
+    required: true
   service-type:
-    description: 'Service type (admin, server, website)'
+    description: "Type of service (e.g., admin, api, client)"
     required: true
 
 runs:
-  using: 'composite'
+  using: "composite"
   steps:
-    - name: Send notification
+    - name: Send Zoho Cliq notification
       shell: bash
       run: |
-        # Get current timestamp
-        CURRENT_TIME=$(date +'%I:%M %P')
-        CURRENT_DATE=$(date +'%b %d, %Y')
-        
-        # Create SIMPLE text message (no formatting)
-        SIMPLE_MESSAGE="${{ inputs.message }} - ${{ inputs.environment }} - $CURRENT_TIME $CURRENT_DATE"
-        
-        # Create SIMPLE JSON payload (no card, no complex structure)
-        JSON_PAYLOAD="{\"text\": \"$SIMPLE_MESSAGE\"}"
-        
-        echo "Webhook URL: ${{ inputs.webhook-url }}"
-        echo "JSON Payload: $JSON_PAYLOAD"
-        
-        # Send the notification
-        curl -X POST "${{ inputs.webhook-url }}" \
-          -H "Content-Type: application/json" \
-          -d "$JSON_PAYLOAD" \
-          -w "\nHTTP Status: %{http_code}\n" \
-          --fail
-        
-        echo "✅ Notification sent successfully!"
+        chmod +x $GITHUB_ACTION_PATH/notify.sh
+        $GITHUB_ACTION_PATH/notify.sh \
+          "${{ inputs.webhook-url }}" \
+          "${{ inputs.message }}" \
+          "${{ inputs.environment }}" \
+          "${{ inputs.status }}" \
+          "${{ inputs.service-type }}"
