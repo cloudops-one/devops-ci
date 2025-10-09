@@ -69,22 +69,11 @@ runs:
         # Build the final message (simple text without markdown)
         FINAL_MESSAGE="${{ inputs.message }}\n\n$SERVICE_NAME: $SERVICE_URL\nTime: $CURRENT_TIME\nDate: $CURRENT_DATE"
 
-        # Create the JSON payload (SIMPLE VERSION)
-        JSON_PAYLOAD=$(cat <<EOF
-{
-  "text": "$FINAL_MESSAGE",
-  "card": {
-    "title": "$TITLE",
-    "theme": "basic",
-    "thumbnail": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png"
-  }
-}
-EOF
-        )
+        # Create the JSON payload (SIMPLE VERSION - no complex formatting)
+        JSON_PAYLOAD="{\"text\": \"$FINAL_MESSAGE\", \"card\": {\"title\": \"$TITLE\", \"theme\": \"basic\", \"thumbnail\": \"https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png\"}}"
 
         # Send the notification
         echo "Sending $SERVICE_NAME deployment notification..."
-        echo "Payload: $JSON_PAYLOAD"
         
         curl -X POST "${{ inputs.webhook-url }}" \
           -H "Content-Type: application/json" \
