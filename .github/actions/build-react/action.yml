@@ -64,17 +64,17 @@ runs:
         echo "🌍 Selected environment: $ENVIRONMENT"
 
         # Determine API base URL
-        case "$ENVIRONMENT" in
-          live)
+        if [[ "$ENVIRONMENT" == "live" ]]; then
             BASE_URL="https://server.live.v1.irai.yoga/api/"
-            ;;
-          stage)
+        elif [[ "$ENVIRONMENT" == "stage" ]]; then
             BASE_URL="https://server.stage.v1.irai.yoga/api/"
-            ;;
-          preview|*)
-            BASE_URL="https://server.preview.v1.irai.yoga/api/"
-            ;;
-        esac
+        else
+            # For preview - always use branch name
+            BRANCH_NAME="${GITHUB_REF#refs/heads/}"
+            SANITIZED_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]')
+            BASE_URL="https://${SANITIZED_BRANCH}.irai.yoga/api/"
+            echo "Using branch-based URL for preview: $BASE_URL"
+        fi
 
         echo "VITE_API_BASE_URL=$BASE_URL" > .env
         echo "✅ .env file content:"
