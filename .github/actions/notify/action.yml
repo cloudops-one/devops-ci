@@ -1,33 +1,28 @@
-name: "Zoho Cliq Notification"
-description: "Send deployment notifications to Zoho Cliq"
-author: "CloudOps One"
+name: "Zoho Cliq Deployment Notification"
+description: "Send Zoho Cliq card notifications for deployment"
 inputs:
-  webhook-url:
-    description: "Zoho Cliq webhook URL"
-    required: true
   message:
-    description: "Notification message text"
+    description: "Deployment message text"
     required: true
   environment:
-    description: "Deployment environment (preview/stage/live)"
+    description: "Environment (preview/stage/live)"
     required: true
   status:
     description: "Deployment status (success/failure)"
     required: true
   service-type:
-    description: "Type of service (e.g., admin, api, client)"
+    description: "Service type (admin/server/website)"
     required: true
 
 runs:
   using: "composite"
   steps:
-    - name: Send Zoho Cliq notification
+    - name: Send card notification to Zoho Cliq
       shell: bash
       run: |
         chmod +x $GITHUB_ACTION_PATH/notify.sh
         $GITHUB_ACTION_PATH/notify.sh \
-          "${{ inputs.webhook-url }}" \
           "${{ inputs.message }}" \
           "${{ inputs.environment }}" \
           "${{ inputs.status }}" \
-          "${{ inputs.service-type }}"
+          "${{ inputs['service-type'] }}"
