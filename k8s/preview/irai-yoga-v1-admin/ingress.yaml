@@ -1,7 +1,7 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: irai-yoga-v1-preview-admin-ingress
+  name: "INGRESS_NAME_PLACEHOLDER"  # ← This gets replaced with branch-based name
   namespace: irai-yoga-v1-preview
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
@@ -14,16 +14,16 @@ spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - "PREVIEW_DOMAIN_PLACEHOLDER"  # ← This gets replaced with branch domain
-      secretName: irai-yoga-v1-admin-tls
+        - "PREVIEW_DOMAIN_PLACEHOLDER"
+      secretName: "TLS_SECRET_PLACEHOLDER"
   rules:
-    - host: "PREVIEW_DOMAIN_PLACEHOLDER"  # ← This gets replaced with branch domain
+    - host: "PREVIEW_DOMAIN_PLACEHOLDER"
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: irai-yoga-v1-admin-svc
+                name: "SERVICE_NAME_PLACEHOLDER"
                 port:
                   number: 80
