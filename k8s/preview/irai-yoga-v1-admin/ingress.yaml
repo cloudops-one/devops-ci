@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: irai-yoga-v1-preview-admin-ingress
+  namespace: irai-yoga-v1-preview
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "5120m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - "PREVIEW_DOMAIN_PLACEHOLDER"  # ← This gets replaced with branch domain
+      secretName: irai-yoga-v1-admin-tls
+  rules:
+    - host: "PREVIEW_DOMAIN_PLACEHOLDER"  # ← This gets replaced with branch domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: irai-yoga-v1-admin-svc
+                port:
+                  number: 80
