@@ -1,0 +1,82 @@
+name: Deploy Ingress to Kubernetes
+description: "Deploy Ingress to DigitalOcean Kubernetes cluster with dynamic domain for any project"
+
+inputs:
+  do-token:
+    description: "DigitalOcean API token"
+    required: true
+  cluster-name:
+    description: "DigitalOcean Kubernetes cluster name"
+    required: true
+  namespace:
+    description: "Kubernetes namespace"
+    required: true
+  project-type:
+    description: "Project type (server or admin)"
+    required: true
+  preview-domain:
+    description: "Preview domain to replace placeholder"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up doctl
+      uses: digitalocean/action-doctl@v2
+      with:
+        token: ${{ inputs.do-token }}
+
+    - name: Save kubeconfig
+      run: doctl kubernetes cluster kubeconfig save ${{ inputs.cluster-name }}
+      shell: bash
+
+    - name: Determine ingress file path
+      id: ingress-path
+      run: |
+        if [[ "${{ inputs.project-type }}" == "server" ]]; then
+          INGRESS_FILE="devops-ci/k8s/preview/irai-yoga-v1-server/ingress.yaml"
+          TLS_SECRET="irai-yoga-v1-server-tls"
+          SERVICE_NAME="irai-yoga-v1-preview-svc"
+        elif [[ "${{ inputs.project-type }}" == "admin" ]]; then
+          INGRESS_FILE="devops-ci/k8s/preview/irai-yoga-v1-admin/ingress.yaml"
+          TLS_SECRET="irai-yoga-v1-admin-tls"
+          SERVICE_NAME="irai-yoga-v1-admin-svc"
+        else
+          echo "❌ Unknown project type: ${{ inputs.project-type }}"
+          exit 1
+        fi
+        
+        echo "ingress_file=$INGRESS_FILE" >> $GITHUB_OUTPUT
+        echo "tls_secret=$TLS_SECRET" >> $GITHUB_OUTPUT
+        echo "service_name=$SERVICE_NAME" >> $GITHUB_OUTPUT
+        echo "Using ingress file: $INGRESS_FILE"
+      shell: bash
+
+    - name: Update preview domain in ingress file
+      run: |
+        INGRESS_FILE="${{ steps.ingress-path.outputs.ingress_file }}"
+        PREVIEW_DOMAIN="${{ inputs.preview-domain }}"
+        TLS_SECRET="${{ steps.ingress-path.outputs.tls_secret }}"
+        SERVICE_NAME="${{ steps.ingress-path.outputs.service_name }}"
+        
+        echo "Updating preview domain to: $PREVIEW_DOMAIN"
+        echo "Using TLS secret: $TLS_SECRET"
+        echo "Using service: $SERVICE_NAME"
+        
+        # Update domain placeholder
+        sed -i "s/PREVIEW_DOMAIN_PLACEHOLDER/$PREVIEW_DOMAIN/g" "$INGRESS_FILE"
+        # Update TLS secret placeholder
+        sed -i "s/TLS_SECRET_PLACEHOLDER/$TLS_SECRET/g" "$INGRESS_FILE"
+        # Update service name placeholder
+        sed -i "s/SERVICE_NAME_PLACEHOLDER/$SERVICE_NAME/g" "$INGRESS_FILE"
+        
+        echo "✅ Updated domain, TLS secret, and service in ingress file"
+      shell: bash
+
+    - name: Apply Ingress YAML
+      run: |
+        INGRESS_FILE="${{ steps.ingress-path.outputs.ingress_file }}"
+        echo "Applying ingress file $INGRESS_FILE to namespace ${{ inputs.namespace }}"
+        kubectl apply -f "$INGRESS_FILE" -n ${{ inputs.namespace }}
+        echo "✅ Ingress applied successfully for ${{ inputs.project-type }} project"
+      shell: bash
