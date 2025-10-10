@@ -24,6 +24,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: "SERVICE_NAME_PLACEHOLDER"
+                name: irai-yoga-v1-preview-svc
                 port:
                   number: 80
