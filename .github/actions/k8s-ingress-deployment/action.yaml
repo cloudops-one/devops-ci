@@ -38,7 +38,7 @@ runs:
   using: "composite"
   steps:
     - name: Set up doctl
-      uses: digitalocean/action-doctl@v2
+      uses: cloudops-one/action-doctl@v2
       with:
         token: ${{ inputs.do-token }}
 
