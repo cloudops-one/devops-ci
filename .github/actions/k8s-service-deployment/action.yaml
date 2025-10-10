@@ -1,0 +1,253 @@
+name: Deploy Service to Kubernetes
+description: "Deploy Service and Deployment to DigitalOcean Kubernetes cluster with dynamic naming"
+
+inputs:
+  do-token:
+    description: "DigitalOcean API token"
+    required: true
+  cluster-name:
+    description: "DigitalOcean Kubernetes cluster name"
+    required: true
+  namespace:
+    description: "Kubernetes namespace"
+    required: true
+  project-type:
+    description: "Project type (server or admin)"
+    required: true
+  branch-name:
+    description: "Branch name for dynamic resource naming"
+    required: true
+  port:
+    description: "Service port"
+    required: false
+    default: "80"
+  target-port:
+    description: "Container target port"
+    required: false
+    default: "8080"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Debug inputs
+      shell: bash
+      run: |
+        echo "🔍 Debug Service Input Values:"
+        echo "Project Type: ${{ inputs.project-type }}"
+        echo "Branch Name: '${{ inputs.branch-name }}'"
+        echo "Namespace: ${{ inputs.namespace }}"
+        echo "Port: ${{ inputs.port }}"
+        echo "Target Port: ${{ inputs.target-port }}"
+
+    - name: Set up doctl
+      uses: digitalocean/action-doctl@v2
+      with:
+        token: ${{ inputs.do-token }}
+
+    - name: Save kubeconfig
+      shell: bash
+      run: doctl kubernetes cluster kubeconfig save ${{ inputs.cluster-name }}
+
+    - name: Validate and sanitize branch name
+      id: sanitize-branch
+      shell: bash
+      run: |
+        # Use provided branch name or fallback to GitHub context
+        if [ -n "${{ inputs.branch-name }}" ]; then
+          BRANCH_NAME="${{ inputs.branch-name }}"
+          echo "✅ Using provided branch name: $BRANCH_NAME"
+        else
+          # Fallback to GitHub context variables
+          if [ -n "${{ github.head_ref }}" ]; then
+            BRANCH_NAME="${{ github.head_ref }}"
+            echo "🔄 Using github.head_ref: $BRANCH_NAME"
+          else
+            BRANCH_NAME="${{ github.ref_name }}"
+            echo "🔄 Using github.ref_name: $BRANCH_NAME"
+          fi
+        fi
+
+        # Final validation - if still empty, use a default
+        if [ -z "$BRANCH_NAME" ]; then
+          echo "⚠️  Branch name is empty, using 'preview-branch' as fallback"
+          BRANCH_NAME="preview-branch"
+        fi
+
+        # Sanitize branch name for Kubernetes resources
+        SANITIZED_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]' | cut -c 1-53)
+        
+        # Remove leading/trailing hyphens
+        SANITIZED_BRANCH=$(echo "$SANITIZED_BRANCH" | sed 's/^-*//; s/-*$//')
+        
+        # Ensure it's not empty after sanitization
+        if [ -z "$SANITIZED_BRANCH" ]; then
+          SANITIZED_BRANCH="preview-branch"
+        fi
+
+        echo "branch_name=$SANITIZED_BRANCH" >> $GITHUB_OUTPUT
+        echo "✅ Final sanitized branch name: $SANITIZED_BRANCH"
+
+    - name: Generate dynamic service and deployment names
+      id: resource-names
+      shell: bash
+      run: |
+        SANITIZED_BRANCH="${{ steps.sanitize-branch.outputs.branch_name }}"
+        
+        echo "🔧 Generating resources for branch: $SANITIZED_BRANCH"
+        
+        if [[ "${{ inputs.project-type }}" == "server" ]]; then
+          SERVICE_NAME="${SANITIZED_BRANCH}-server-svc"
+          DEPLOYMENT_NAME="${SANITIZED_BRANCH}-server-deployment"
+          SELECTOR_APP="${SANITIZED_BRANCH}-server"
+          SERVICE_FILE="devops-ci/k8s/preview/irai-yoga-v1-server/service.yaml"
+          DEPLOYMENT_FILE="devops-ci/k8s/preview/irai-yoga-v1-server/deployment.yaml"
+          echo "📦 Project Type: Server"
+        elif [[ "${{ inputs.project-type }}" == "admin" ]]; then
+          SERVICE_NAME="${SANITIZED_BRANCH}-admin-svc"
+          DEPLOYMENT_NAME="${SANITIZED_BRANCH}-admin-deployment"
+          SELECTOR_APP="${SANITIZED_BRANCH}-admin"
+          SERVICE_FILE="devops-ci/k8s/preview/irai-yoga-v1-admin/service.yaml"
+          DEPLOYMENT_FILE="devops-ci/k8s/preview/irai-yoga-v1-admin/deployment.yaml"
+          echo "📦 Project Type: Admin"
+        else
+          echo "❌ Unknown project type: ${{ inputs.project-type }}"
+          echo "✅ Supported types: server, admin"
+          exit 1
+        fi
+        
+        # Validate Kubernetes resource name length (max 63 chars)
+        for RESOURCE in "$SERVICE_NAME" "$DEPLOYMENT_NAME" "$SELECTOR_APP"; do
+          if [ ${#RESOURCE} -gt 63 ]; then
+            echo "⚠️  Resource name too long, truncating: $RESOURCE"
+            TRIMMED="${RESOURCE:0:63}"
+            # Remove trailing hyphen if present
+            TRIMMED="${TRIMMED%-}"
+            if [[ "$RESOURCE" == "$SERVICE_NAME" ]]; then SERVICE_NAME="$TRIMMED"; fi
+            if [[ "$RESOURCE" == "$DEPLOYMENT_NAME" ]]; then DEPLOYMENT_NAME="$TRIMMED"; fi
+            if [[ "$RESOURCE" == "$SELECTOR_APP" ]]; then SELECTOR_APP="$TRIMMED"; fi
+          fi
+        done
+        
+        echo "service_name=$SERVICE_NAME" >> $GITHUB_OUTPUT
+        echo "deployment_name=$DEPLOYMENT_NAME" >> $GITHUB_OUTPUT
+        echo "selector_app=$SELECTOR_APP" >> $GITHUB_OUTPUT
+        echo "service_file=$SERVICE_FILE" >> $GITHUB_OUTPUT
+        echo "deployment_file=$DEPLOYMENT_FILE" >> $GITHUB_OUTPUT
+        
+        echo "✅ Generated Resources:"
+        echo "   Service Name: $SERVICE_NAME"
+        echo "   Deployment Name: $DEPLOYMENT_NAME"
+        echo "   Selector App: $SELECTOR_APP"
+        echo "   Service File: $SERVICE_FILE"
+        echo "   Deployment File: $DEPLOYMENT_FILE"
+
+    - name: Verify service file exists
+      shell: bash
+      run: |
+        SERVICE_FILE="${{ steps.resource-names.outputs.service_file }}"
+        echo "📁 Checking service file: $SERVICE_FILE"
+        
+        if [ ! -f "$SERVICE_FILE" ]; then
+          echo "❌ Service file not found: $SERVICE_FILE"
+          echo "📂 Current directory structure:"
+          find . -name "*.yaml" -o -name "*.yml" | head -20
+          exit 1
+        else
+          echo "✅ Service file found: $SERVICE_FILE"
+          echo "📄 File content preview:"
+          head -20 "$SERVICE_FILE"
+        fi
+
+    - name: Update placeholders in service file
+      shell: bash
+      run: |
+        SERVICE_FILE="${{ steps.resource-names.outputs.service_file }}"
+        SERVICE_NAME="${{ steps.resource-names.outputs.service_name }}"
+        SELECTOR_APP="${{ steps.resource-names.outputs.selector_app }}"
+        PORT="${{ inputs.port }}"
+        TARGET_PORT="${{ inputs.target-port }}"
+        
+        echo "🔄 Updating placeholders in: $SERVICE_FILE"
+        echo "   Service Name: $SERVICE_NAME"
+        echo "   Selector App: $SELECTOR_APP"
+        echo "   Port: $PORT"
+        echo "   Target Port: $TARGET_PORT"
+        
+        # Create backup of original file
+        cp "$SERVICE_FILE" "${SERVICE_FILE}.backup"
+        
+        # Update all placeholders with proper escaping
+        sed -i "s|SERVICE_NAME_PLACEHOLDER|$SERVICE_NAME|g" "$SERVICE_FILE"
+        sed -i "s|SELECTOR_APP_PLACEHOLDER|$SELECTOR_APP|g" "$SERVICE_FILE"
+        sed -i "s|PORT_PLACEHOLDER|$PORT|g" "$SERVICE_FILE"
+        sed -i "s|TARGET_PORT_PLACEHOLDER|$TARGET_PORT|g" "$SERVICE_FILE"
+        
+        echo "✅ Updated service file:"
+        echo "📄 Modified content preview:"
+        head -20 "$SERVICE_FILE"
+
+    - name: Update placeholders in deployment file
+      shell: bash
+      run: |
+        DEPLOYMENT_FILE="${{ steps.resource-names.outputs.deployment_file }}"
+        DEPLOYMENT_NAME="${{ steps.resource-names.outputs.deployment_name }}"
+        SELECTOR_APP="${{ steps.resource-names.outputs.selector_app }}"
+        
+        echo "🔄 Updating placeholders in: $DEPLOYMENT_FILE"
+        echo "   Deployment Name: $DEPLOYMENT_NAME"
+        echo "   Selector App: $SELECTOR_APP"
+        
+        # Create backup of original file
+        cp "$DEPLOYMENT_FILE" "${DEPLOYMENT_FILE}.backup"
+        
+        # Update all placeholders with proper escaping
+        sed -i "s|DEPLOYMENT_NAME_PLACEHOLDER|$DEPLOYMENT_NAME|g" "$DEPLOYMENT_FILE"
+        sed -i "s|SELECTOR_APP_PLACEHOLDER|$SELECTOR_APP|g" "$DEPLOYMENT_FILE"
+        
+        echo "✅ Updated deployment file:"
+        echo "📄 Modified content preview:"
+        head -20 "$DEPLOYMENT_FILE"
+
+    - name: Apply Service YAML
+      shell: bash
+      run: |
+        SERVICE_FILE="${{ steps.resource-names.outputs.service_file }}"
+        SERVICE_NAME="${{ steps.resource-names.outputs.service_name }}"
+        NAMESPACE="${{ inputs.namespace }}"
+        
+        echo "🚀 Applying service to namespace: $NAMESPACE"
+        echo "   File: $SERVICE_FILE"
+        echo "   Name: $SERVICE_NAME"
+        
+        # Validate the YAML syntax first
+        kubectl apply --dry-run=client -f "$SERVICE_FILE" -n "$NAMESPACE"
+        
+        # Apply the service
+        kubectl apply -f "$SERVICE_FILE" -n "$NAMESPACE"
+        
+        # Verify the service was created
+        kubectl get service "$SERVICE_NAME" -n "$NAMESPACE" --ignore-not-found
+        
+        echo "✅ Service '$SERVICE_NAME' applied successfully for ${{ inputs.project-type }} project"
+
+    - name: Apply Deployment YAML
+      shell: bash
+      run: |
+        DEPLOYMENT_FILE="${{ steps.resource-names.outputs.deployment_file }}"
+        DEPLOYMENT_NAME="${{ steps.resource-names.outputs.deployment_name }}"
+        NAMESPACE="${{ inputs.namespace }}"
+        
+        echo "🚀 Applying deployment to namespace: $NAMESPACE"
+        echo "   File: $DEPLOYMENT_FILE"
+        echo "   Name: $DEPLOYMENT_NAME"
+        
+        # Validate the YAML syntax first
+        kubectl apply --dry-run=client -f "$DEPLOYMENT_FILE" -n "$NAMESPACE"
+        
+        # Apply the deployment
+        kubectl apply -f "$DEPLOYMENT_FILE" -n "$NAMESPACE"
+        
+        # Verify the deployment was created
+        kubectl get deployment "$DEPLOYMENT_NAME" -n "$NAMESPACE" --ignore-not-found
+        
+        echo "✅ Deployment '$DEPLOYMENT_NAME' applied successfully for ${{ inputs.project-type }} project"
