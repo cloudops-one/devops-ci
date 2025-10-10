@@ -38,7 +38,7 @@ runs:
   using: "composite"
   steps:
     - name: Set up doctl
-      uses: cloudops-one/action-doctl@v2
+      uses: digitalocean/action-doctl@v2
       with:
         token: ${{ inputs.do-token }}
 
@@ -50,7 +50,17 @@ runs:
       id: ingress-name
       run: |
         BRANCH_NAME="${{ inputs.branch-name }}"
+        
+        # Simple validation - if empty, fail fast
+        if [ -z "$BRANCH_NAME" ]; then
+          echo "❌ ERROR: Branch name is required but was empty"
+          exit 1
+        fi
+        
+        # Simple sanitization
         SANITIZED_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]')
+        
+        echo "Using branch: $SANITIZED_BRANCH"
         
         if [[ "${{ inputs.project-type }}" == "server" ]]; then
           INGRESS_NAME="${SANITIZED_BRANCH}-server-ingress"
@@ -115,7 +125,7 @@ runs:
         AWS_DEFAULT_REGION: ${{ inputs.aws-region }}
       run: |
         echo "🔐 Testing AWS Route53 credentials..."
-        echo "AWS Access Key ID: ${AWS_ACCESS_KEY_ID:0:8}..."  # Show first 8 chars for security
+        echo "AWS Access Key ID: ${AWS_ACCESS_KEY_ID:0:8}..."
         echo "AWS Region: $AWS_DEFAULT_REGION"
         echo "Hosted Zone ID: ${{ inputs.aws-hosted-zone-id }}"
         
@@ -128,34 +138,6 @@ runs:
         aws route53 list-hosted-zones --query "HostedZones[?Id=='/hostedzone/${{ inputs.aws-hosted-zone-id }}'].Name" --output text
         
         echo "✅ Route53 access confirmed!"
-      shell: bash
-
-    - name: Wait for DNS propagation before certificate
-      if: inputs.aws-access-key-id != ''
-      run: |
-        DOMAIN="${{ inputs.preview-domain }}"
-        echo "🔍 Waiting for DNS propagation before certificate creation: $DOMAIN"
-        
-        # Install dig if not available
-        if ! command -v dig &> /dev/null; then
-          echo "Installing dnsutils for dig command..."
-          sudo apt-get update && sudo apt-get install -y dnsutils
-        fi
-        
-        # Wait for DNS to propagate before certificate creation
-        for i in {1..30}; do
-          RESOLVED_IP=$(dig +short "$DOMAIN" | head -1)
-          if [ -n "$RESOLVED_IP" ]; then
-            echo "✅ DNS is resolving: $DOMAIN -> $RESOLVED_IP"
-            break
-          fi
-          echo "Attempt $i: DNS not propagating yet, waiting 10 seconds..."
-          sleep 10
-        done
-        
-        if [ -z "$RESOLVED_IP" ]; then
-          echo "⚠️ DNS might still be propagating. Continuing anyway..."
-        fi
       shell: bash
 
     - name: Get LoadBalancer IP and create DNS record
@@ -213,9 +195,6 @@ runs:
         }
         EOF
         
-        echo "Route53 change request:"
-        cat route53-change.json
-        
         # Create DNS record
         aws route53 change-resource-record-sets \
           --hosted-zone-id "$HOSTED_ZONE_ID" \
@@ -224,70 +203,4 @@ runs:
         echo "✅ DNS record created successfully!"
         echo "🎉 Preview environment ready: https://$DOMAIN"
         echo "lb_ip=$LB_IP" >> $GITHUB_OUTPUT
-      shell: bash
-
-    - name: Wait for certificate issuance
-      if: inputs.aws-access-key-id != ''
-      run: |
-        INGRESS_NAME="${{ steps.ingress-name.outputs.ingress_name }}"
-        TLS_SECRET="${{ steps.ingress-name.outputs.tls_secret }}"
-        NAMESPACE="${{ inputs.namespace }}"
-        DOMAIN="${{ inputs.preview-domain }}"
-        
-        echo "⏳ Waiting for TLS certificate issuance..."
-        echo "Certificate Secret: $TLS_SECRET"
-        
-        # Wait for certificate to be ready
-        for i in {1..60}; do
-          CERT_STATUS=$(kubectl get certificate $TLS_SECRET -n $NAMESPACE -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "Unknown")
-          
-          if [ "$CERT_STATUS" == "True" ]; then
-            echo "✅ TLS Certificate is ready!"
-            break
-          elif [ "$CERT_STATUS" == "False" ]; then
-            CERT_MESSAGE=$(kubectl get certificate $TLS_SECRET -n $NAMESPACE -o jsonpath='{.status.conditions[?(@.type=="Ready")].message}' 2>/dev/null || echo "No message")
-            echo "❌ Certificate failed: $CERT_MESSAGE"
-          fi
-          
-          echo "Attempt $i: Certificate status: $CERT_STATUS, waiting 10 seconds..."
-          sleep 10
-        done
-        
-        # Final check
-        if kubectl get certificate $TLS_SECRET -n $NAMESPACE -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null | grep -q "True"; then
-          echo "🎉 TLS Certificate is fully ready!"
-          echo "🔒 Secure URL: https://$DOMAIN"
-        else
-          echo "⚠️ Certificate might still be issuing. Check with:"
-          echo "kubectl get certificate $TLS_SECRET -n $NAMESPACE"
-          echo "🔗 Preview URL: https://$DOMAIN (certificate pending)"
-        fi
-      shell: bash
-
-    - name: Verify final setup
-      if: inputs.aws-access-key-id != ''
-      run: |
-        INGRESS_NAME="${{ steps.ingress-name.outputs.ingress_name }}"
-        TLS_SECRET="${{ steps.ingress-name.outputs.tls_secret }}"
-        NAMESPACE="${{ inputs.namespace }}"
-        DOMAIN="${{ inputs.preview-domain }}"
-        
-        echo "🔍 Final verification for branch: ${{ inputs.branch-name }}"
-        echo "================================================"
-        echo "🌐 Domain: https://$DOMAIN"
-        echo "📦 Ingress: $INGRESS_NAME"
-        echo "🔒 TLS Secret: $TLS_SECRET"
-        echo "🏷️ Project: ${{ inputs.project-type }}"
-        echo "================================================"
-        
-        # Show ingress status
-        echo "Ingress Status:"
-        kubectl get ingress $INGRESS_NAME -n $NAMESPACE -o wide
-        
-        # Show certificate status
-        echo -e "\nCertificate Status:"
-        kubectl get certificate $TLS_SECRET -n $NAMESPACE -o wide 2>/dev/null || echo "Certificate not found yet"
-        
-        echo -e "\n🎉 Preview environment deployment completed!"
-        echo "📍 Your preview is available at: https://$DOMAIN"
       shell: bash
