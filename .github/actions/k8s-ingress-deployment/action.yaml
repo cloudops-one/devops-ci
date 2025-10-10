@@ -1,5 +1,5 @@
 name: Deploy Ingress to Kubernetes
-description: "Deploy Ingress to DigitalOcean Kubernetes cluster with dynamic domain for any project"
+description: "Deploy Ingress to DigitalOcean Kubernetes cluster with dynamic domain and AWS Route53 DNS"
 
 inputs:
   do-token:
@@ -17,12 +17,25 @@ inputs:
   preview-domain:
     description: "Preview domain to replace placeholder"
     required: true
+  aws-access-key-id:
+    description: "AWS Access Key ID"
+    required: false
+  aws-secret-access-key:
+    description: "AWS Secret Access Key"
+    required: false
+  aws-region:
+    description: "AWS Region"
+    required: false
+    default: "us-east-1"
+  aws-hosted-zone-id:
+    description: "AWS Route53 Hosted Zone ID"
+    required: false
 
 runs:
   using: "composite"
   steps:
     - name: Set up doctl
-      uses: cloudops-one/action-doctl@v2
+      uses: digitalocean/action-doctl@v2
       with:
         token: ${{ inputs.do-token }}
 
@@ -30,17 +43,19 @@ runs:
       run: doctl kubernetes cluster kubeconfig save ${{ inputs.cluster-name }}
       shell: bash
 
-    - name: Determine ingress file path
-      id: ingress-path
+    - name: Determine ingress file path and names
+      id: ingress-config
       run: |
         if [[ "${{ inputs.project-type }}" == "server" ]]; then
           INGRESS_FILE="devops-ci/k8s/preview/irai-yoga-v1-server/ingress.yaml"
           TLS_SECRET="irai-yoga-v1-server-tls"
           SERVICE_NAME="irai-yoga-v1-preview-svc"
+          INGRESS_NAME="irai-yoga-v1-preview-server-ingress"
         elif [[ "${{ inputs.project-type }}" == "admin" ]]; then
           INGRESS_FILE="devops-ci/k8s/preview/irai-yoga-v1-admin/ingress.yaml"
           TLS_SECRET="irai-yoga-v1-admin-tls"
           SERVICE_NAME="irai-yoga-v1-admin-svc"
+          INGRESS_NAME="irai-yoga-v1-preview-admin-ingress"
         else
           echo "❌ Unknown project type: ${{ inputs.project-type }}"
           exit 1
@@ -49,15 +64,16 @@ runs:
         echo "ingress_file=$INGRESS_FILE" >> $GITHUB_OUTPUT
         echo "tls_secret=$TLS_SECRET" >> $GITHUB_OUTPUT
         echo "service_name=$SERVICE_NAME" >> $GITHUB_OUTPUT
+        echo "ingress_name=$INGRESS_NAME" >> $GITHUB_OUTPUT
         echo "Using ingress file: $INGRESS_FILE"
       shell: bash
 
     - name: Update preview domain in ingress file
       run: |
-        INGRESS_FILE="${{ steps.ingress-path.outputs.ingress_file }}"
+        INGRESS_FILE="${{ steps.ingress-config.outputs.ingress_file }}"
         PREVIEW_DOMAIN="${{ inputs.preview-domain }}"
-        TLS_SECRET="${{ steps.ingress-path.outputs.tls_secret }}"
-        SERVICE_NAME="${{ steps.ingress-path.outputs.service_name }}"
+        TLS_SECRET="${{ steps.ingress-config.outputs.tls_secret }}"
+        SERVICE_NAME="${{ steps.ingress-config.outputs.service_name }}"
         
         echo "Updating preview domain to: $PREVIEW_DOMAIN"
         echo "Using TLS secret: $TLS_SECRET"
@@ -75,8 +91,76 @@ runs:
 
     - name: Apply Ingress YAML
       run: |
-        INGRESS_FILE="${{ steps.ingress-path.outputs.ingress_file }}"
+        INGRESS_FILE="${{ steps.ingress-config.outputs.ingress_file }}"
         echo "Applying ingress file $INGRESS_FILE to namespace ${{ inputs.namespace }}"
         kubectl apply -f "$INGRESS_FILE" -n ${{ inputs.namespace }}
         echo "✅ Ingress applied successfully for ${{ inputs.project-type }} project"
+      shell: bash
+
+    - name: Configure AWS credentials for DNS
+      if: inputs.aws-access-key-id != ''
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ inputs.aws-access-key-id }}
+        aws-secret-access-key: ${{ inputs.aws-secret-access-key }}
+        aws-region: ${{ inputs.aws-region }}
+
+    - name: Get LoadBalancer IP and create DNS record
+      if: inputs.aws-access-key-id != ''
+      id: create-dns
+      run: |
+        INGRESS_NAME="${{ steps.ingress-config.outputs.ingress_name }}"
+        NAMESPACE="${{ inputs.namespace }}"
+        DOMAIN="${{ inputs.preview-domain }}"
+        HOSTED_ZONE_ID="${{ inputs.aws-hosted-zone-id }}"
+        
+        echo "Waiting for LoadBalancer IP for ingress: $INGRESS_NAME..."
+        
+        # Wait for LoadBalancer IP
+        for i in {1..30}; do
+          LB_IP=$(kubectl get ingress $INGRESS_NAME -n $NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+          if [ -n "$LB_IP" ]; then
+            echo "✅ LoadBalancer IP found: $LB_IP"
+            break
+          fi
+          echo "Attempt $i: LoadBalancer IP not ready yet, waiting 10 seconds..."
+          sleep 10
+        done
+        
+        if [ -z "$LB_IP" ]; then
+          echo "❌ Failed to get LoadBalancer IP after 5 minutes"
+          kubectl get ingress -n $NAMESPACE
+          exit 1
+        fi
+        
+        # Create Route53 DNS record
+        echo "Creating DNS record: $DOMAIN -> $LB_IP"
+        
+        cat > route53-change.json << EOF
+        {
+          "Changes": [
+            {
+              "Action": "UPSERT",
+              "ResourceRecordSet": {
+                "Name": "$DOMAIN.",
+                "Type": "A",
+                "TTL": 300,
+                "ResourceRecords": [
+                  {
+                    "Value": "$LB_IP"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+        EOF
+        
+        aws route53 change-resource-record-sets \
+          --hosted-zone-id "$HOSTED_ZONE_ID" \
+          --change-batch file://route53-change.json
+        
+        echo "✅ DNS record created: $DOMAIN -> $LB_IP"
+        echo "Preview URL: https://$DOMAIN"
+        echo "lb_ip=$LB_IP" >> $GITHUB_OUTPUT
       shell: bash
