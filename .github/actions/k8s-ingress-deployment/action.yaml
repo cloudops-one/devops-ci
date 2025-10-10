@@ -48,7 +48,7 @@ runs:
         echo "Cluster: ${{ inputs.cluster-name }}"
 
     - name: Set up doctl
-      uses: digitalocean/action-doctl@v2
+      uses: cloudops-one/action-doctl@v2
       with:
         token: ${{ inputs.do-token }}
 
