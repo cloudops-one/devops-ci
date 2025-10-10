@@ -1,30 +1,29 @@
-# devops-ci/k8s/preview/irai-yoga-v1-server/ingress.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: irai-yoga-v1-preview-server-ingress
+  name: "INGRESS_NAME_PLACEHOLDER"  # ← This gets replaced with branch-based name
   namespace: irai-yoga-v1-preview
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/proxy-body-size: "5120m"       # ⬅️ Set to 5GB
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"      # ⏳ Increase for large uploads
+    nginx.ingress.kubernetes.io/proxy-body-size: "5120m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   ingressClassName: nginx
   tls:
     - hosts:
-        - "PREVIEW_DOMAIN_PLACEHOLDER"  # ← This gets replaced with branch domain
-      secretName: irai-yoga-v1-server-tls
+        - "PREVIEW_DOMAIN_PLACEHOLDER"
+      secretName: "TLS_SECRET_PLACEHOLDER"
   rules:
-    - host: "PREVIEW_DOMAIN_PLACEHOLDER"  # ← This gets replaced with branch domain
+    - host: "PREVIEW_DOMAIN_PLACEHOLDER"
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: irai-yoga-v1-preview-svc
+                name: "SERVICE_NAME_PLACEHOLDER"
                 port:
                   number: 80
