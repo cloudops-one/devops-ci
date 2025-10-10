@@ -1,29 +1,52 @@
-name: Environment Cleanup
-
+name: Cleanup on Branch Delete
 on:
-  schedule:
-    - cron: '0 */3 * * *'  # Runs every 3 hours
-  workflow_dispatch:
+  delete:
+    branches:
+      - '**'
 
 jobs:
-  cleanup:
+  cleanup-deleted-branch:
+    if: github.event.ref_type == 'branch'
     runs-on: ubuntu-latest
     steps:
-      - name: Setup kubectl
-        uses: azure/setup-kubectl@v3
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Checkout manifests repo
+        uses: cloudops-one/checkout@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-west-2
+          repository: cloudops-one/devops-ci
+          ref: main
+          path: devops-ci
 
-      - name: Cleanup expired preview environments
+      - name: Extract branch name
+        id: extract-branch
         run: |
-          kubectl get namespaces -l environment=preview -o json | \
-          jq -r '.items[] | select((.metadata.creationTimestamp | fromdateiso8601) < (now - 10800)) | .metadata.name' | \
-          while read namespace; do
-            echo "Cleaning up namespace: $namespace"
-            kubectl delete namespace $namespace --timeout=60s
-          done
+          BRANCH_NAME="${{ github.event.ref }}"
+          SANITIZED_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]')
+          echo "branch_name=$SANITIZED_BRANCH" >> $GITHUB_OUTPUT
+          echo "Cleaning up resources for deleted branch: $BRANCH_NAME -> $SANITIZED_BRANCH"
+
+      - name: Set up kubectl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DO_API_TOKEN }}
+        env:
+          DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DO_API_TOKEN }}
+
+      - name: Save kubeconfig
+        run: doctl kubernetes cluster kubeconfig save k8s
+
+      - name: Cleanup branch resources
+        run: |
+          BRANCH_NAME="${{ steps.extract-branch.outputs.branch_name }}"
+          NAMESPACE="irai-yoga-v1-preview"
+          
+          echo "🧹 Cleaning up resources for deleted branch: $BRANCH_NAME"
+          
+          # Delete all resources for this branch
+          kubectl delete ingress $BRANCH_NAME-server-ingress -n $NAMESPACE --ignore-not-found=true
+          kubectl delete ingress $BRANCH_NAME-admin-ingress -n $NAMESPACE --ignore-not-found=true
+          kubectl delete certificate $BRANCH_NAME-server-tls -n $NAMESPACE --ignore-not-found=true
+          kubectl delete certificate $BRANCH_NAME-admin-tls -n $NAMESPACE --ignore-not-found=true
+          kubectl delete secret $BRANCH_NAME-server-tls -n $NAMESPACE --ignore-not-found=true
+          kubectl delete secret $BRANCH_NAME-admin-tls -n $NAMESPACE --ignore-not-found=true
+          
+          echo "✅ Cleaned up all resources for branch: $BRANCH_NAME"
