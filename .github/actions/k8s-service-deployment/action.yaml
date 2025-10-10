@@ -1,33 +1,33 @@
-name: Deploy Service to Kubernetes
-description: "Deploy Service and Deployment to DigitalOcean Kubernetes cluster with dynamic naming"
+name: 'Deploy Service and Deployment to Kubernetes'
+description: 'Deploy Service and Deployment to DigitalOcean Kubernetes cluster with dynamic naming'
 
 inputs:
   do-token:
-    description: "DigitalOcean API token"
+    description: 'DigitalOcean API token'
     required: true
   cluster-name:
-    description: "DigitalOcean Kubernetes cluster name"
+    description: 'DigitalOcean Kubernetes cluster name'
     required: true
   namespace:
-    description: "Kubernetes namespace"
+    description: 'Kubernetes namespace'
     required: true
   project-type:
-    description: "Project type (server or admin)"
+    description: 'Project type (server or admin)'
     required: true
   branch-name:
-    description: "Branch name for dynamic resource naming"
+    description: 'Branch name for dynamic resource naming'
     required: true
   port:
-    description: "Service port"
+    description: 'Service port'
     required: false
-    default: "80"
+    default: '80'
   target-port:
-    description: "Container target port"
+    description: 'Container target port'
     required: false
-    default: "8080"
+    default: '8080'
 
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
     - name: Debug inputs
       shell: bash
@@ -40,7 +40,7 @@ runs:
         echo "Target Port: ${{ inputs.target-port }}"
 
     - name: Set up doctl
-      uses: cloudops-one/action-doctl@v2
+      uses: digitalocean/action-doctl@v2
       with:
         token: ${{ inputs.do-token }}
 
