@@ -47,12 +47,12 @@ runs:
       id: ingress-config
       run: |
         if [[ "${{ inputs.project-type }}" == "server" ]]; then
-          INGRESS_FILE="devops-ci/k8s/preview/irai-yoga-v1-server/ingress.yaml"
+          INGRESS_FILE="cloudops-one/devops-ci/k8s/preview/irai-yoga-v1-server/ingress.yaml"
           TLS_SECRET="irai-yoga-v1-server-tls"
           SERVICE_NAME="irai-yoga-v1-preview-svc"
           INGRESS_NAME="irai-yoga-v1-preview-server-ingress"
         elif [[ "${{ inputs.project-type }}" == "admin" ]]; then
-          INGRESS_FILE="devops-ci/k8s/preview/irai-yoga-v1-admin/ingress.yaml"
+          INGRESS_FILE="cloudops-one/devops-ci/k8s/preview/irai-yoga-v1-admin/ingress.yaml"
           TLS_SECRET="irai-yoga-v1-admin-tls"
           SERVICE_NAME="irai-yoga-v1-admin-svc"
           INGRESS_NAME="irai-yoga-v1-preview-admin-ingress"
