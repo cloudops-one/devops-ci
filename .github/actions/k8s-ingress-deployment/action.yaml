@@ -48,7 +48,7 @@ runs:
         echo "Cluster: ${{ inputs.cluster-name }}"
 
     - name: Set up doctl
-      uses: cloudops-one/action-doctl@v2
+      uses: digitalocean/action-doctl@v2
       with:
         token: ${{ inputs.do-token }}
 
@@ -92,7 +92,6 @@ runs:
           SANITIZED_BRANCH="preview-branch"
         fi
 
-        echo "Sanitized branch: $SANITIZED_BRANCH"
         echo "branch_name=$SANITIZED_BRANCH" >> $GITHUB_OUTPUT
         echo "✅ Final sanitized branch name: $SANITIZED_BRANCH"
 
@@ -108,13 +107,13 @@ runs:
           INGRESS_NAME="${SANITIZED_BRANCH}-server-ingress"
           INGRESS_FILE="devops-ci/k8s/preview/irai-yoga-v1-server/ingress.yaml"
           TLS_SECRET="${SANITIZED_BRANCH}-server-tls"
-          SERVICE_NAME="irai-yoga-v1-preview-svc"
+          SERVICE_NAME="${SANITIZED_BRANCH}-server-svc"  # Dynamic service name
           echo "📦 Project Type: Server"
         elif [[ "${{ inputs.project-type }}" == "admin" ]]; then
           INGRESS_NAME="${SANITIZED_BRANCH}-admin-ingress"
           INGRESS_FILE="devops-ci/k8s/preview/irai-yoga-v1-admin/ingress.yaml"
           TLS_SECRET="${SANITIZED_BRANCH}-admin-tls"
-          SERVICE_NAME="irai-yoga-v1-admin-svc"
+          SERVICE_NAME="${SANITIZED_BRANCH}-admin-svc"  # Dynamic service name
           echo "📦 Project Type: Admin"
         else
           echo "❌ Unknown project type: ${{ inputs.project-type }}"
