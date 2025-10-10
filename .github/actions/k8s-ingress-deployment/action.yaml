@@ -18,13 +18,13 @@ inputs:
     description: "Preview domain to replace placeholder"
     required: true
   aws-access-key-id:
-    description: "AWS Access Key ID"
+    description: "AWS Access Key ID for Route53"
     required: false
   aws-secret-access-key:
-    description: "AWS Secret Access Key"
+    description: "AWS Secret Access Key for Route53"
     required: false
   aws-region:
-    description: "AWS Region"
+    description: "AWS Region for Route53"
     required: false
     default: "us-east-1"
   aws-hosted-zone-id:
@@ -35,7 +35,7 @@ runs:
   using: "composite"
   steps:
     - name: Set up doctl
-      uses: cloudops-one/action-doctl@v2
+      uses: digitalocean/action-doctl@v2
       with:
         token: ${{ inputs.do-token }}
 
@@ -97,36 +97,42 @@ runs:
         echo "✅ Ingress applied successfully for ${{ inputs.project-type }} project"
       shell: bash
 
-    - name: Configure AWS CLI manually
+    - name: Test AWS Route53 credentials
       if: inputs.aws-access-key-id != ''
+      env:
+        AWS_ACCESS_KEY_ID: ${{ inputs.aws-access-key-id }}
+        AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-access-key }}
+        AWS_DEFAULT_REGION: ${{ inputs.aws-region }}
       run: |
-        # Configure AWS CLI using environment variables
-        mkdir -p ~/.aws
-        cat > ~/.aws/credentials << EOF
-        [default]
-        aws_access_key_id = ${{ inputs.aws-access-key-id }}
-        aws_secret_access_key = ${{ inputs.aws-secret-access-key }}
-        EOF
+        echo "🔐 Testing AWS Route53 credentials..."
+        echo "AWS Access Key ID: ${AWS_ACCESS_KEY_ID:0:8}..."  # Show first 8 chars for security
+        echo "AWS Region: $AWS_DEFAULT_REGION"
+        echo "Hosted Zone ID: ${{ inputs.aws-hosted-zone-id }}"
         
-        cat > ~/.aws/config << EOF
-        [default]
-        region = ${{ inputs.aws-region }}
-        EOF
+        # Test credentials
+        CALLER_IDENTITY=$(aws sts get-caller-identity)
+        echo "✅ AWS Identity: $(echo $CALLER_IDENTITY | jq -r '.Arn')"
         
-        echo "✅ AWS CLI configured successfully"
-        echo "AWS Region: ${{ inputs.aws-region }}"
+        # Test Route53 access
+        echo "Testing Route53 access..."
+        aws route53 list-hosted-zones --query "HostedZones[?Id=='/hostedzone/${{ inputs.aws-hosted-zone-id }}'].Name" --output text
+        
+        echo "✅ Route53 access confirmed!"
       shell: bash
 
     - name: Get LoadBalancer IP and create DNS record
       if: inputs.aws-access-key-id != ''
-      id: create-dns
+      env:
+        AWS_ACCESS_KEY_ID: ${{ inputs.aws-access-key-id }}
+        AWS_SECRET_ACCESS_KEY: ${{ inputs.aws-secret-access-key }}
+        AWS_DEFAULT_REGION: ${{ inputs.aws-region }}
       run: |
         INGRESS_NAME="${{ steps.ingress-config.outputs.ingress_name }}"
         NAMESPACE="${{ inputs.namespace }}"
         DOMAIN="${{ inputs.preview-domain }}"
         HOSTED_ZONE_ID="${{ inputs.aws-hosted-zone-id }}"
         
-        echo "Waiting for LoadBalancer IP for ingress: $INGRESS_NAME..."
+        echo "⏳ Waiting for LoadBalancer IP for: $INGRESS_NAME..."
         
         # Wait for LoadBalancer IP
         for i in {1..30}; do
@@ -146,7 +152,7 @@ runs:
         fi
         
         # Create Route53 DNS record
-        echo "Creating DNS record: $DOMAIN -> $LB_IP"
+        echo "🌐 Creating DNS record: $DOMAIN -> $LB_IP"
         
         cat > route53-change.json << EOF
         {
@@ -168,16 +174,16 @@ runs:
         }
         EOF
         
-        echo "Route53 change batch:"
+        echo "Route53 change request:"
         cat route53-change.json
         
-        # Create DNS record using AWS CLI
+        # Create DNS record
         aws route53 change-resource-record-sets \
           --hosted-zone-id "$HOSTED_ZONE_ID" \
           --change-batch file://route53-change.json
         
-        echo "✅ DNS record created: $DOMAIN -> $LB_IP"
-        echo "Preview URL: https://$DOMAIN"
+        echo "✅ DNS record created successfully!"
+        echo "🎉 Preview environment ready: https://$DOMAIN"
         echo "lb_ip=$LB_IP" >> $GITHUB_OUTPUT
       shell: bash
 
@@ -185,7 +191,7 @@ runs:
       if: inputs.aws-access-key-id != ''
       run: |
         DOMAIN="${{ inputs.preview-domain }}"
-        echo "Checking DNS propagation for: $DOMAIN"
+        echo "🔍 Checking DNS propagation for: $DOMAIN"
         
         # Install dig if not available
         if ! command -v dig &> /dev/null; then
@@ -205,7 +211,7 @@ runs:
         done
         
         if [ -n "$RESOLVED_IP" ]; then
-          echo "🎉 Preview environment is ready!"
+          echo "🎉 Preview environment is fully ready!"
           echo "🌐 Access your preview at: https://$DOMAIN"
         else
           echo "⚠️ DNS might still be propagating. The domain will be available soon."
