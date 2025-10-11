@@ -13,16 +13,32 @@ inputs:
   service-type:
     description: "Service type (admin/server/website)"
     required: true
+  preview-url:
+    description: "Dynamic preview URL (required for preview environment)"
+    required: false
+  stage-url:
+    description: "Dynamic stage URL (required for stage environment)"
+    required: false
+  live-url:
+    description: "Dynamic live URL (required for live environment)"
+    required: false
 
 runs:
   using: "composite"
   steps:
     - name: Send card notification to Zoho Cliq
       shell: bash
+      env:
+        ZOHO_WEBHOOK_PREVIEW: ${{ secrets.ZOHO_WEBHOOK_PREVIEW }}
+        ZOHO_WEBHOOK_STAGE: ${{ secrets.ZOHO_WEBHOOK_STAGE }}
+        ZOHO_WEBHOOK_LIVE: ${{ secrets.ZOHO_WEBHOOK_LIVE }}
       run: |
         chmod +x $GITHUB_ACTION_PATH/notify.sh
         $GITHUB_ACTION_PATH/notify.sh \
           "${{ inputs.message }}" \
           "${{ inputs.environment }}" \
           "${{ inputs.status }}" \
-          "${{ inputs['service-type'] }}"
+          "${{ inputs['service-type'] }}" \
+          "${{ inputs.preview-url }}" \
+          "${{ inputs.stage-url }}" \
+          "${{ inputs.live-url }}"
