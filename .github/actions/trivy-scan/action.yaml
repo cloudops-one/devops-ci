@@ -17,7 +17,7 @@ inputs:
   scanners:
     description: 'Scanners to use'
     required: true
-    default: 'vuln,secret,config'
+    default: 'vuln,secret,misconfig'
   ignore-unfixed:
     description: 'Ignore unfixed vulnerabilities'
     required: false
@@ -58,6 +58,7 @@ runs:
         echo "Running Trivy $SCAN_TYPE scan on: $SCAN_REF"
         echo "Severity: $SEVERITY"
         echo "Scanners: $SCANNERS"
+        echo "Ignore Unfixed: $IGNORE_UNFIXED"
         echo "Exit Code on vuln: $EXIT_CODE"
 
         # Build command with conditional flags
@@ -71,11 +72,15 @@ runs:
         # Add optional flags
         if [ "$IGNORE_UNFIXED" = "true" ]; then
           CMD="$CMD --ignore-unfixed"
+          echo "🔧 Ignoring fixed vulnerabilities"
         fi
         
         if [ "$EXIT_ON_EOSL" = "true" ]; then
           CMD="$CMD --exit-on-eosl"
+          echo "🔧 Failing on EOSL OS"
         fi
 
+        echo "Executing: $CMD"
+        
         # Execute the command
         eval $CMD
