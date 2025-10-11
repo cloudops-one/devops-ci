@@ -40,7 +40,7 @@ runs:
         echo "Target Port: ${{ inputs.target-port }}"
 
     - name: Set up doctl
-      uses: cloudops-one/action-doctl@v2
+      uses: digitalocean/action-doctl@v2
       with:
         token: ${{ inputs.do-token }}
 
@@ -115,12 +115,12 @@ runs:
         # Create backup of original file
         cp "$SERVICE_FILE" "${SERVICE_FILE}.backup"
         
-        # Update all placeholders with proper escaping and different delimiters
+        # FIXED: Replace TARGET_PORT_PLACEHOLDER FIRST to avoid conflicts
+        sed -i "s|TARGET_PORT_PLACEHOLDER|$TARGET_PORT|g" "$SERVICE_FILE"
+        # Then replace other placeholders
         sed -i "s|SERVICE_NAME_PLACEHOLDER|$SERVICE_NAME|g" "$SERVICE_FILE"
         sed -i "s|SELECTOR_APP_PLACEHOLDER|$SELECTOR_APP|g" "$SERVICE_FILE"
         sed -i "s|PORT_PLACEHOLDER|$PORT|g" "$SERVICE_FILE"
-        # Use a different delimiter for target port to avoid issues
-        sed -i "s|TARGET_PORT_PLACEHOLDER|$TARGET_PORT|g" "$SERVICE_FILE"
         
         echo "✅ Updated service file:"
         echo "📄 Modified content preview:"
