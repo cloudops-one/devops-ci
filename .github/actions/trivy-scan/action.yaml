@@ -1,5 +1,6 @@
 name: 'Trivy Security Scan'
 description: 'Centralized Trivy security scanning for filesystem and container images'
+
 inputs:
   scan-type:
     description: 'Type of scan (fs or image)'
@@ -21,6 +22,10 @@ inputs:
     description: 'Ignore unfixed vulnerabilities'
     required: false
     default: 'false'
+  exit-code:
+    description: 'Exit code on vulnerability detection'
+    required: false
+    default: '1'
 
 runs:
   using: 'composite'
@@ -34,26 +39,28 @@ runs:
         echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
         sudo apt-get update
         sudo apt-get install -y trivy
-        
+
     - name: Run Trivy scan
       shell: bash
       run: |
-        SCAN_TYPE="${{ inputs.scan-type }}"
-        SCAN_REF="${{ inputs.scan-ref }}"
-        SEVERITY="${{ inputs.severity }}"
-        SCANNERS="${{ inputs.scanners }}"
-        IGNORE_UNFIXED="${{ inputs.ignore-unfixed }}"
-        
+        SCAN_TYPE="${{ inputs['scan-type'] }}"
+        SCAN_REF="${{ inputs['scan-ref'] }}"
+        SEVERITY="${{ inputs['severity'] }}"
+        SCANNERS="${{ inputs['scanners'] }}"
+        IGNORE_UNFIXED="${{ inputs['ignore-unfixed'] }}"
+        EXIT_CODE="${{ inputs['exit-code'] }}"
+
         echo "Running Trivy $SCAN_TYPE scan on: $SCAN_REF"
         echo "Severity: $SEVERITY"
         echo "Scanners: $SCANNERS"
-        
+        echo "Exit Code on vuln: $EXIT_CODE"
+
         if [ "$SCAN_TYPE" = "fs" ]; then
           trivy filesystem "$SCAN_REF" \
             --format table \
             --severity "$SEVERITY" \
             --scanners "$SCANNERS" \
-            --exit-code 1 \
+            --exit-code "$EXIT_CODE" \
             --no-progress \
             $( [ "$IGNORE_UNFIXED" = "true" ] && echo "--ignore-unfixed" )
         elif [ "$SCAN_TYPE" = "image" ]; then
@@ -61,7 +68,7 @@ runs:
             --format table \
             --severity "$SEVERITY" \
             --scanners "$SCANNERS" \
-            --exit-code 1 \
+            --exit-code "$EXIT_CODE" \
             --no-progress \
             $( [ "$IGNORE_UNFIXED" = "true" ] && echo "--ignore-unfixed" )
         else
