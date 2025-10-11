@@ -26,6 +26,10 @@ inputs:
     description: 'Exit code on vulnerability detection'
     required: false
     default: '1'
+  exit-on-eosl:
+    description: 'Exit with error code on EOSL (End of Service Life) OS'
+    required: false
+    default: 'false'
 
 runs:
   using: 'composite'
@@ -49,29 +53,29 @@ runs:
         SCANNERS="${{ inputs['scanners'] }}"
         IGNORE_UNFIXED="${{ inputs['ignore-unfixed'] }}"
         EXIT_CODE="${{ inputs['exit-code'] }}"
+        EXIT_ON_EOSL="${{ inputs['exit-on-eosl'] }}"
 
         echo "Running Trivy $SCAN_TYPE scan on: $SCAN_REF"
         echo "Severity: $SEVERITY"
         echo "Scanners: $SCANNERS"
         echo "Exit Code on vuln: $EXIT_CODE"
 
-        if [ "$SCAN_TYPE" = "fs" ]; then
-          trivy filesystem "$SCAN_REF" \
-            --format table \
-            --severity "$SEVERITY" \
-            --scanners "$SCANNERS" \
-            --exit-code "$EXIT_CODE" \
-            --no-progress \
-            $( [ "$IGNORE_UNFIXED" = "true" ] && echo "--ignore-unfixed" )
-        elif [ "$SCAN_TYPE" = "image" ]; then
-          trivy image "$SCAN_REF" \
-            --format table \
-            --severity "$SEVERITY" \
-            --scanners "$SCANNERS" \
-            --exit-code "$EXIT_CODE" \
-            --no-progress \
-            $( [ "$IGNORE_UNFIXED" = "true" ] && echo "--ignore-unfixed" )
-        else
-          echo "Error: Invalid scan type. Use 'fs' or 'image'"
-          exit 1
+        # Build command with conditional flags
+        CMD="trivy $SCAN_TYPE \"$SCAN_REF\" \
+          --format table \
+          --severity \"$SEVERITY\" \
+          --scanners \"$SCANNERS\" \
+          --exit-code \"$EXIT_CODE\" \
+          --no-progress"
+
+        # Add optional flags
+        if [ "$IGNORE_UNFIXED" = "true" ]; then
+          CMD="$CMD --ignore-unfixed"
         fi
+        
+        if [ "$EXIT_ON_EOSL" = "true" ]; then
+          CMD="$CMD --exit-on-eosl"
+        fi
+
+        # Execute the command
+        eval $CMD
