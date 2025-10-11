@@ -57,12 +57,12 @@ runs:
         if [[ "${{ inputs.project-type }}" == "server" ]]; then
           SERVICE_NAME="${SANITIZED_BRANCH}-server-svc"
           SELECTOR_APP="${SANITIZED_BRANCH}-server"
-          SERVICE_FILE="k8s/preview/irai-yoga-v1-server/service.yaml"
+          SERVICE_FILE="cloudops-one/devops-ci/k8s/preview/irai-yoga-v1-server/service.yaml"
           echo "📦 Project Type: Server"
         elif [[ "${{ inputs.project-type }}" == "admin" ]]; then
           SERVICE_NAME="${SANITIZED_BRANCH}-admin-svc"
           SELECTOR_APP="${SANITIZED_BRANCH}-admin"
-          SERVICE_FILE="k8s/preview/irai-yoga-v1-admin/service.yaml"
+          SERVICE_FILE="cloudops-one/devops-ci/k8s/preview/irai-yoga-v1-server/service.yaml"
           echo "📦 Project Type: Admin"
         else
           echo "❌ Unknown project type: ${{ inputs.project-type }}"
