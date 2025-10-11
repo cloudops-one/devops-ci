@@ -40,7 +40,7 @@ runs:
         echo "Target Port: ${{ inputs.target-port }}"
 
     - name: Set up doctl
-      uses: cloudops-one/action-doctl@v2
+      uses: digitalocean/action-doctl@v2
       with:
         token: ${{ inputs.do-token }}
 
@@ -62,7 +62,7 @@ runs:
         elif [[ "${{ inputs.project-type }}" == "admin" ]]; then
           SERVICE_NAME="${SANITIZED_BRANCH}-admin-svc"
           SELECTOR_APP="${SANITIZED_BRANCH}-admin"
-          SERVICE_FILE="devops-ci/k8s/preview/irai-yoga-v1-server/service.yaml"
+          SERVICE_FILE="devops-ci/k8s/preview/irai-yoga-v1-admin/service.yaml"
           echo "📦 Project Type: Admin"
         else
           echo "❌ Unknown project type: ${{ inputs.project-type }}"
@@ -115,15 +115,27 @@ runs:
         # Create backup of original file
         cp "$SERVICE_FILE" "${SERVICE_FILE}.backup"
         
-        # Update all placeholders with proper escaping
+        # Update all placeholders with proper escaping and different delimiters
         sed -i "s|SERVICE_NAME_PLACEHOLDER|$SERVICE_NAME|g" "$SERVICE_FILE"
         sed -i "s|SELECTOR_APP_PLACEHOLDER|$SELECTOR_APP|g" "$SERVICE_FILE"
         sed -i "s|PORT_PLACEHOLDER|$PORT|g" "$SERVICE_FILE"
+        # Use a different delimiter for target port to avoid issues
         sed -i "s|TARGET_PORT_PLACEHOLDER|$TARGET_PORT|g" "$SERVICE_FILE"
         
         echo "✅ Updated service file:"
         echo "📄 Modified content preview:"
-        head -20 "$SERVICE_FILE"
+        cat "$SERVICE_FILE"
+
+    - name: Debug placeholder replacement
+      shell: bash
+      run: |
+        SERVICE_FILE="${{ steps.resource-names.outputs.service_file }}"
+        echo "🔍 Debugging placeholder replacement in: $SERVICE_FILE"
+        echo "Current file content:"
+        cat "$SERVICE_FILE"
+        echo "---"
+        echo "Looking for remaining placeholders:"
+        grep -E "PLACEHOLDER|TARGET_|PORT_" "$SERVICE_FILE" || echo "No placeholders found"
 
     - name: Apply Service YAML
       shell: bash
@@ -135,6 +147,11 @@ runs:
         echo "🚀 Applying service to namespace: $NAMESPACE"
         echo "   File: $SERVICE_FILE"
         echo "   Name: $SERVICE_NAME"
+        
+        # Show final YAML content
+        echo "📄 Final YAML to be applied:"
+        cat "$SERVICE_FILE"
+        echo "---"
         
         # Validate the YAML syntax first
         kubectl apply --dry-run=client -f "$SERVICE_FILE" -n "$NAMESPACE"
