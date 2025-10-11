@@ -6,6 +6,7 @@ metadata:
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
     kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"  # 🔥 EXPLICITLY DISABLE
     nginx.ingress.kubernetes.io/proxy-body-size: "5120m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
@@ -23,6 +24,6 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: SERVICE_NAME_PLACEHOLDER  # 🔥 MUST use placeholder
+            name: SERVICE_NAME_PLACEHOLDER
             port:
               number: 80
