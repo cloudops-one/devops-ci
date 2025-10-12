@@ -32,10 +32,10 @@ spec:
                   key: token
           resources:
             limits:
-              cpu: "2"
-              memory: 2Gi
+              cpu: "1"
+              memory: 1Gi
             requests:
-              cpu: "500m"
-              memory: 1500Mi
+              cpu: "250m"
+              memory: 512Mi
       imagePullSecrets:
         - name: harbor-secret
