@@ -47,7 +47,7 @@ jobs:
 
       - name: Set up kubectl
         if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
-        uses: digitalocean/action-doctl@v2
+        uses: cloudops-one/action-doctl@v2
         with:
           token: ${{ secrets.DO_API_TOKEN }}
         env:
