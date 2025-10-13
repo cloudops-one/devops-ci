@@ -14,7 +14,7 @@ spec:
         app: SELECTOR_APP_PLACEHOLDER
     spec:
       containers:
-        - name: SERVER_CONTAINER_PLACEHOLDER
+        - name: ADMIN_CONTAINER_PLACEHOLDER
           image: harbor.cloudops.terv.pro/portal-irai-yoga/admin:TAG_PLACEHOLDER
           imagePullPolicy: Always
           ports:
