@@ -47,13 +47,13 @@ runs:
     - name: Run Trivy scan
       shell: bash
       run: |
-        SCAN_TYPE="${{ inputs['scan-type'] }}"
-        SCAN_REF="${{ inputs['scan-ref'] }}"
-        SEVERITY="${{ inputs['severity'] }}"
-        SCANNERS="${{ inputs['scanners'] }}"
-        IGNORE_UNFIXED="${{ inputs['ignore-unfixed'] }}"
-        EXIT_CODE="${{ inputs['exit-code'] }}"
-        EXIT_ON_EOSL="${{ inputs['exit-on-eosl'] }}"
+        SCAN_TYPE="${{ inputs.scan-type }}"
+        SCAN_REF="${{ inputs.scan-ref }}"
+        SEVERITY="${{ inputs.severity }}"
+        SCANNERS="${{ inputs.scanners }}"
+        IGNORE_UNFIXED="${{ inputs.ignore-unfixed }}"
+        EXIT_CODE="${{ inputs.exit-code }}"
+        EXIT_ON_EOSL="${{ inputs.exit-on-eosl }}"
 
         echo "Running Trivy $SCAN_TYPE scan on: $SCAN_REF"
         echo "Severity: $SEVERITY"
@@ -61,26 +61,30 @@ runs:
         echo "Ignore Unfixed: $IGNORE_UNFIXED"
         echo "Exit Code on vuln: $EXIT_CODE"
 
-        # Build command with conditional flags
+        # Build base command
         CMD="trivy $SCAN_TYPE \"$SCAN_REF\" \
           --format table \
           --severity \"$SEVERITY\" \
           --scanners \"$SCANNERS\" \
-          --exit-code \"$EXIT_CODE\" \
+          --exit-code $EXIT_CODE \
           --no-progress"
 
-        # Add optional flags
+        # Append optional flags
         if [ "$IGNORE_UNFIXED" = "true" ]; then
           CMD="$CMD --ignore-unfixed"
           echo "🔧 Ignoring fixed vulnerabilities"
         fi
-        
+
         if [ "$EXIT_ON_EOSL" = "true" ]; then
           CMD="$CMD --exit-on-eosl"
           echo "🔧 Failing on EOSL OS"
         fi
 
+        # Always try to include .trivyignore if it exists
+        if [ -f ".trivyignore" ]; then
+          CMD="$CMD --ignorefile .trivyignore"
+          echo "✅ Using .trivyignore file"
+        fi
+
         echo "Executing: $CMD"
-        
-        # Execute the command
         eval $CMD
