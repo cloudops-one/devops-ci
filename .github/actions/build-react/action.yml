@@ -72,7 +72,7 @@ runs:
             # For preview - always use branch name
             BRANCH_NAME="${GITHUB_REF#refs/heads/}"
             SANITIZED_BRANCH=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]')
-            BASE_URL="https://${SANITIZED_BRANCH}.irai.yoga/api/"
+            BASE_URL="https://${SANITIZED_BRANCH}.server.irai.yoga/api/"
             echo "Using branch-based URL for preview: $BASE_URL"
         fi
 
