@@ -2,7 +2,7 @@ name: Cleanup Preview Deployments (TEST MODE)
 on:
   # TEST MODE: Run every 2 minutes to check for preview deployments older than 2 minutes
   schedule:
-    - cron: '*/1 * * * *'  # Run every 2 minutes for testing
+    - cron: '0 */3 * * *'  # Run every 3 hours for testing
   # Also run on branch delete for preview branches
   delete:
     branches:
