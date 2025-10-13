@@ -1,8 +1,8 @@
-name: Cleanup Preview Deployments
+name: Cleanup Preview Deployments (TEST MODE)
 on:
-  # Run every 3 hours to check for preview deployments older than 3 hours
+  # TEST MODE: Run every 2 minutes to check for preview deployments older than 2 minutes
   schedule:
-    - cron: '0 */3 * * *'  # Run at minute 0 of every 3rd hour
+    - cron: '*/2 * * * *'  # Run every 2 minutes for testing
   # Also run on branch delete for preview branches
   delete:
     branches:
@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout manifests repo
-        uses: cloudops-one/checkout@v4
+        uses: actions/checkout@v4
         with:
           repository: cloudops-one/devops-ci
           ref: main
@@ -47,191 +47,13 @@ jobs:
 
       - name: Set up kubectl
         if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
-        uses: cloudops-one/action-doctl@v2
+        uses: digitalocean/action-doctl@v2
         with:
           token: ${{ secrets.DO_API_TOKEN }}
-        env:
-          DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DO_API_TOKEN }}
 
       - name: Save kubeconfig
         if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
         run: doctl kubernetes cluster kubeconfig save k8s
-
-      - name: Cleanup old preview deployments
-        if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.ROUTE53_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.ROUTE53_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.ROUTE53_REGION }}
-        run: |
-          NAMESPACE="irai-yoga-v1-preview"
-          HOSTED_ZONE_ID="${{ secrets.ROUTE53_HOSTED_ZONE_ID }}"
-          
-          echo "🧹 Starting cleanup of preview deployments in namespace: $NAMESPACE..."
-          echo "⏰ Cron schedule: Every 3 hours (deployments older than 3 hours will be cleaned)"
-          
-          # Check if namespace exists
-          if ! kubectl get namespace $NAMESPACE &> /dev/null; then
-            echo "ℹ️ Namespace $NAMESPACE does not exist, nothing to clean up"
-            exit 0
-          fi
-          
-          # For scheduled runs, find ALL preview deployments older than 3 hours
-          if [ "${{ github.event_name }}" == "schedule" ]; then
-            echo "🕒 Checking ALL preview deployments older than 3 hours in $NAMESPACE..."
-            
-            # Get all deployments in preview namespace only
-            DEPLOYMENTS=$(kubectl get deployments -n $NAMESPACE -o jsonpath='{.items[*].metadata.name}')
-            
-            if [ -z "$DEPLOYMENTS" ]; then
-              echo "ℹ️ No deployments found in $NAMESPACE"
-              exit 0
-            fi
-            
-            echo "Found deployments: $DEPLOYMENTS"
-            
-            for DEPLOYMENT in $DEPLOYMENTS; do
-              # Only process branch deployments (ends with -deployment)
-              if [[ "$DEPLOYMENT" =~ -deployment$ ]]; then
-                # Extract branch name from deployment name
-                BRANCH_NAME=$(echo "$DEPLOYMENT" | sed 's/-deployment$//')
-                
-                # Get deployment creation timestamp
-                CREATION_TIME=$(kubectl get deployment $DEPLOYMENT -n $NAMESPACE -o jsonpath='{.metadata.creationTimestamp}')
-                
-                if [ -n "$CREATION_TIME" ]; then
-                  # Convert to epoch seconds
-                  CREATION_EPOCH=$(date -d "$CREATION_TIME" +%s)
-                  CURRENT_EPOCH=$(date +%s)
-                  AGE_SECONDS=$((CURRENT_EPOCH - CREATION_EPOCH))
-                  AGE_HOURS=$((AGE_SECONDS / 3600))
-                  
-                  echo "Preview Deployment: $DEPLOYMENT, Age: $AGE_HOURS hours"
-                  
-                  # Delete if older than 3 hours
-                  if [ $AGE_HOURS -ge 3 ]; then
-                    echo "🗑️ Deleting preview deployment $DEPLOYMENT (older than 3 hours)"
-                    ./cleanup-branch-resources.sh "$BRANCH_NAME" "$NAMESPACE" "$HOSTED_ZONE_ID"
-                  else
-                    echo "⏳ Preview deployment $DEPLOYMENT is only $AGE_HOURS hours old, keeping"
-                  fi
-                fi
-              else
-                echo "ℹ️ Skipping non-branch deployment: $DEPLOYMENT"
-              fi
-            done
-            
-          # For branch delete events (only preview branches reach here)
-          elif [ "${{ github.event_name }}" == "delete" ]; then
-            BRANCH_NAME="${{ steps.extract-branch.outputs.branch_name }}"
-            echo "🗑️ Cleaning up resources for deleted PREVIEW branch: $BRANCH_NAME in namespace: $NAMESPACE"
-            ./cleanup-branch-resources.sh "$BRANCH_NAME" "$NAMESPACE" "$HOSTED_ZONE_ID"
-          fi
-
-      - name: Cleanup script
-        if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
-        id: cleanup-script
-        run: |
-          cat > cleanup-branch-resources.sh << 'EOF'
-          #!/bin/bash
-          BRANCH_NAME="$1"
-          NAMESPACE="$2"
-          HOSTED_ZONE_ID="$3"
-          
-          echo "🧹 Cleaning up PREVIEW resources for branch: $BRANCH_NAME in namespace: $NAMESPACE"
-          
-          # Delete Kubernetes resources ONLY in the specified namespace
-          echo "🗑️ Deleting Kubernetes resources in $NAMESPACE..."
-          
-          # Server resources
-          kubectl delete deployment $BRANCH_NAME-server-deployment -n $NAMESPACE --ignore-not-found=true
-          kubectl delete service $BRANCH_NAME-server-service -n $NAMESPACE --ignore-not-found=true
-          kubectl delete ingress $BRANCH_NAME-server-ingress -n $NAMESPACE --ignore-not-found=true
-          kubectl delete certificate $BRANCH_NAME-server-tls -n $NAMESPACE --ignore-not-found=true
-          kubectl delete secret $BRANCH_NAME-server-tls -n $NAMESPACE --ignore-not-found=true
-          
-          # Admin resources
-          kubectl delete deployment $BRANCH_NAME-admin-deployment -n $NAMESPACE --ignore-not-found=true
-          kubectl delete service $BRANCH_NAME-admin-service -n $NAMESPACE --ignore-not-found=true
-          kubectl delete ingress $BRANCH_NAME-admin-ingress -n $NAMESPACE --ignore-not-found=true
-          kubectl delete certificate $BRANCH_NAME-admin-tls -n $NAMESPACE --ignore-not-found=true
-          kubectl delete secret $BRANCH_NAME-admin-tls -n $NAMESPACE --ignore-not-found=true
-          
-          # Clean up DNS records in Route53
-          echo "🌐 Cleaning up PREVIEW DNS records in Route53..."
-          
-          # Server domain record
-          SERVER_DOMAIN="$BRANCH_NAME.server.irai.yoga"
-          # Admin domain record  
-          ADMIN_DOMAIN="$BRANCH_NAME.portal.irai.yoga"
-          
-          # Get Load Balancer IP
-          LB_IP="YOUR_LOAD_BALANCER_IP"  # Will be replaced automatically
-          
-          # Delete server domain record
-          cat > delete-server-record.json << EOR
-          {
-            "Changes": [
-              {
-                "Action": "DELETE",
-                "ResourceRecordSet": {
-                  "Name": "$SERVER_DOMAIN.",
-                  "Type": "A",
-                  "TTL": 300,
-                  "ResourceRecords": [
-                    {
-                      "Value": "$LB_IP"
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-          EOR
-          
-          # Delete admin domain record
-          cat > delete-admin-record.json << EOR
-          {
-            "Changes": [
-              {
-                "Action": "DELETE",
-                "ResourceRecordSet": {
-                  "Name": "$ADMIN_DOMAIN.",
-                  "Type": "A", 
-                  "TTL": 300,
-                  "ResourceRecords": [
-                    {
-                      "Value": "$LB_IP"
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-          EOR
-          
-          # Execute Route53 changes
-          if aws route53 list-resource-record-sets --hosted-zone-id $HOSTED_ZONE_ID --query "ResourceRecordSets[?Name=='$SERVER_DOMAIN.']" --output text | grep -q "$SERVER_DOMAIN"; then
-            echo "🗑️ Deleting PREVIEW DNS record: $SERVER_DOMAIN"
-            aws route53 change-resource-record-sets --hosted-zone-id $HOSTED_ZONE_ID --change-batch file://delete-server-record.json
-          else
-            echo "ℹ️ PREVIEW DNS record $SERVER_DOMAIN not found, skipping"
-          fi
-          
-          if aws route53 list-resource-record-sets --hosted-zone-id $HOSTED_ZONE_ID --query "ResourceRecordSets[?Name=='$ADMIN_DOMAIN.']" --output text | grep -q "$ADMIN_DOMAIN"; then
-            echo "🗑️ Deleting PREVIEW DNS record: $ADMIN_DOMAIN"
-            aws route53 change-resource-record-sets --hosted-zone-id $HOSTED_ZONE_ID --change-batch file://delete-admin-record.json
-          else
-            echo "ℹ️ PREVIEW DNS record $ADMIN_DOMAIN not found, skipping"
-          fi
-          
-          # Cleanup temp files
-          rm -f delete-server-record.json delete-admin-record.json
-          
-          echo "✅ Successfully cleaned up PREVIEW resources for branch: $BRANCH_NAME"
-          EOF
-          
-          chmod +x cleanup-branch-resources.sh
 
       - name: Install AWS CLI
         if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
@@ -259,12 +81,195 @@ jobs:
             echo "lb_ip=YOUR_LOAD_BALANCER_IP" >> $GITHUB_OUTPUT
           fi
 
+      - name: Create cleanup script
+        if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
+        id: create-cleanup-script
+        run: |
+          cat > cleanup-branch-resources.sh << 'EOF'
+          #!/bin/bash
+          BRANCH_NAME="$1"
+          NAMESPACE="$2"
+          HOSTED_ZONE_ID="$3"
+          
+          echo "🧹 TEST MODE: Cleaning up PREVIEW resources for branch: $BRANCH_NAME in namespace: $NAMESPACE"
+          
+          # Delete Kubernetes resources ONLY in the specified namespace
+          echo "🗑️ Deleting Kubernetes resources in $NAMESPACE..."
+          
+          # Server Project Resources
+          echo "🔧 Cleaning up SERVER project resources..."
+          kubectl delete deployment $BRANCH_NAME-server-deployment -n $NAMESPACE --ignore-not-found=true
+          kubectl delete service $BRANCH_NAME-server-service -n $NAMESPACE --ignore-not-found=true
+          kubectl delete ingress $BRANCH_NAME-server-ingress -n $NAMESPACE --ignore-not-found=true
+          kubectl delete certificate $BRANCH_NAME-server-tls -n $NAMESPACE --ignore-not-found=true
+          kubectl delete secret $BRANCH_NAME-server-tls -n $NAMESPACE --ignore-not-found=true
+          
+          # Admin Project Resources  
+          echo "🔧 Cleaning up ADMIN project resources..."
+          kubectl delete deployment $BRANCH_NAME-admin-deployment -n $NAMESPACE --ignore-not-found=true
+          kubectl delete service $BRANCH_NAME-admin-service -n $NAMESPACE --ignore-not-found=true
+          kubectl delete ingress $BRANCH_NAME-admin-ingress -n $NAMESPACE --ignore-not-found=true
+          kubectl delete certificate $BRANCH_NAME-admin-tls -n $NAMESPACE --ignore-not-found=true
+          kubectl delete secret $BRANCH_NAME-admin-tls -n $NAMESPACE --ignore-not-found=true
+          
+          # Clean up DNS records in Route53
+          echo "🌐 TEST MODE: Cleaning up PREVIEW DNS records in Route53..."
+          
+          # Server project domain record
+          SERVER_DOMAIN="$BRANCH_NAME.server.irai.yoga"
+          # Admin project domain record  
+          ADMIN_DOMAIN="$BRANCH_NAME.portal.irai.yoga"
+          
+          # Get Load Balancer IP from environment variable
+          LB_IP="$LB_IP"
+          
+          # Delete server project domain record
+          cat > delete-server-record.json << EOR
+          {
+            "Changes": [
+              {
+                "Action": "DELETE",
+                "ResourceRecordSet": {
+                  "Name": "$SERVER_DOMAIN.",
+                  "Type": "A",
+                  "TTL": 300,
+                  "ResourceRecords": [
+                    {
+                      "Value": "$LB_IP"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+          EOR
+          
+          # Delete admin project domain record
+          cat > delete-admin-record.json << EOR
+          {
+            "Changes": [
+              {
+                "Action": "DELETE",
+                "ResourceRecordSet": {
+                  "Name": "$ADMIN_DOMAIN.",
+                  "Type": "A", 
+                  "TTL": 300,
+                  "ResourceRecords": [
+                    {
+                      "Value": "$LB_IP"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+          EOR
+          
+          # Execute Route53 changes
+          if aws route53 list-resource-record-sets --hosted-zone-id $HOSTED_ZONE_ID --query "ResourceRecordSets[?Name=='$SERVER_DOMAIN.']" --output text | grep -q "$SERVER_DOMAIN"; then
+            echo "🗑️ TEST MODE: Deleting SERVER project DNS record: $SERVER_DOMAIN"
+            aws route53 change-resource-record-sets --hosted-zone-id $HOSTED_ZONE_ID --change-batch file://delete-server-record.json
+          else
+            echo "ℹ️ TEST MODE: SERVER project DNS record $SERVER_DOMAIN not found, skipping"
+          fi
+          
+          if aws route53 list-resource-record-sets --hosted-zone-id $HOSTED_ZONE_ID --query "ResourceRecordSets[?Name=='$ADMIN_DOMAIN.']" --output text | grep -q "$ADMIN_DOMAIN"; then
+            echo "🗑️ TEST MODE: Deleting ADMIN project DNS record: $ADMIN_DOMAIN"
+            aws route53 change-resource-record-sets --hosted-zone-id $HOSTED_ZONE_ID --change-batch file://delete-admin-record.json
+          else
+            echo "ℹ️ TEST MODE: ADMIN project DNS record $ADMIN_DOMAIN not found, skipping"
+          fi
+          
+          # Cleanup temp files
+          rm -f delete-server-record.json delete-admin-record.json
+          
+          echo "✅ TEST MODE: Successfully cleaned up PREVIEW resources for branch: $BRANCH_NAME"
+          EOF
+          
+          chmod +x cleanup-branch-resources.sh
+          echo "✅ Cleanup script created and made executable"
+
       - name: Update cleanup script with LB IP
         if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
         run: |
           LB_IP="${{ steps.get-lb-ip.outputs.lb_ip }}"
-          sed -i "s/YOUR_LOAD_BALANCER_IP/$LB_IP/g" cleanup-branch-resources.sh
+          sed -i "s/LB_IP=\"\$LB_IP\"/LB_IP=\"$LB_IP\"/g" cleanup-branch-resources.sh
           echo "✅ Updated cleanup script with Load Balancer IP: $LB_IP"
+
+      - name: Cleanup old preview deployments (TEST MODE)
+        if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.ROUTE53_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.ROUTE53_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.ROUTE53_REGION }}
+        run: |
+          NAMESPACE="irai-yoga-v1-preview"
+          HOSTED_ZONE_ID="${{ secrets.ROUTE53_HOSTED_ZONE_ID }}"
+          
+          echo "🧹 TEST MODE: Starting cleanup of preview deployments in namespace: $NAMESPACE..."
+          echo "⏰ TEST SCHEDULE: Every 2 minutes (deployments older than 2 minutes will be cleaned)"
+          
+          # Check if namespace exists
+          if ! kubectl get namespace $NAMESPACE &> /dev/null; then
+            echo "ℹ️ Namespace $NAMESPACE does not exist, nothing to clean up"
+            exit 0
+          fi
+          
+          # For scheduled runs, find ALL preview deployments older than 2 minutes
+          if [ "${{ github.event_name }}" == "schedule" ]; then
+            echo "🕒 TEST MODE: Checking ALL preview deployments older than 2 minutes in $NAMESPACE..."
+            
+            # Get all deployments in preview namespace only
+            DEPLOYMENTS=$(kubectl get deployments -n $NAMESPACE -o jsonpath='{.items[*].metadata.name}')
+            
+            if [ -z "$DEPLOYMENTS" ]; then
+              echo "ℹ️ No deployments found in $NAMESPACE"
+              exit 0
+            fi
+            
+            echo "Found deployments: $DEPLOYMENTS"
+            
+            for DEPLOYMENT in $DEPLOYMENTS; do
+              # Only process branch deployments (ends with -deployment)
+              if [[ "$DEPLOYMENT" =~ -deployment$ ]]; then
+                # Extract branch name from deployment name
+                BRANCH_NAME=$(echo "$DEPLOYMENT" | sed 's/-deployment$//')
+                
+                # Get deployment creation timestamp
+                CREATION_TIME=$(kubectl get deployment $DEPLOYMENT -n $NAMESPACE -o jsonpath='{.metadata.creationTimestamp}')
+                
+                if [ -n "$CREATION_TIME" ]; then
+                  # Convert to epoch seconds
+                  CREATION_EPOCH=$(date -d "$CREATION_TIME" +%s)
+                  CURRENT_EPOCH=$(date +%s)
+                  AGE_SECONDS=$((CURRENT_EPOCH - CREATION_EPOCH))
+                  AGE_MINUTES=$((AGE_SECONDS / 60))
+                  
+                  echo "Preview Deployment: $DEPLOYMENT, Age: $AGE_MINUTES minutes"
+                  
+                  # TEST MODE: Delete if older than 2 minutes
+                  if [ $AGE_MINUTES -ge 2 ]; then
+                    echo "🗑️ TEST MODE: Deleting preview deployment $DEPLOYMENT (older than 2 minutes)"
+                    if ./cleanup-branch-resources.sh "$BRANCH_NAME" "$NAMESPACE" "$HOSTED_ZONE_ID"; then
+                      echo "✅ TEST MODE: Successfully cleaned up $DEPLOYMENT"
+                    else
+                      echo "⚠️ TEST MODE: Failed to clean up $DEPLOYMENT, continuing with others"
+                    fi
+                  else
+                    echo "⏳ TEST MODE: Preview deployment $DEPLOYMENT is only $AGE_MINUTES minutes old, keeping"
+                  fi
+                fi
+              else
+                echo "ℹ️ Skipping non-branch deployment: $DEPLOYMENT"
+              fi
+            done
+            
+          # For branch delete events (only preview branches reach here)
+          elif [ "${{ github.event_name }}" == "delete" ]; then
+            BRANCH_NAME="${{ steps.extract-branch.outputs.branch_name }}"
+            echo "🗑️ TEST MODE: Cleaning up resources for deleted PREVIEW branch: $BRANCH_NAME in namespace: $NAMESPACE"
+            ./cleanup-branch-resources.sh "$BRANCH_NAME" "$NAMESPACE" "$HOSTED_ZONE_ID"
+          fi
 
       - name: Skip non-preview branch
         if: github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'false'
@@ -272,11 +277,24 @@ jobs:
           echo "⏩ Skipping cleanup for non-preview branch: ${{ github.event.ref }}"
           echo "✅ Only preview branches (feat/*, fix/*, chore/*, etc.) are cleaned up"
 
-      - name: Verify cleanup
+      - name: Verify cleanup (TEST MODE)
         if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
         run: |
-          echo "✅ PREVIEW cleanup completed successfully"
-          echo "⏰ Schedule: Runs every 3 hours"
-          echo "🗑️ Deletes: Preview deployments older than 3 hours"
-          echo "🛡️ Protects: Wildcard certificates and non-preview branches"
-          echo "🌐 Cleans: DNS records for deleted branches"
+          echo "✅ TEST MODE: PREVIEW cleanup completed successfully"
+          echo "⏰ TEST SCHEDULE: Runs every 2 minutes"
+          echo "🗑️ TEST DELETES: Preview deployments older than 2 minutes"
+          echo "🛡️ PROTECTS: Wildcard certificates and non-preview branches"
+          echo "🌐 CLEANS DNS: {branch-name}.server.irai.yoga & {branch-name}.portal.irai.yoga"
+          echo ""
+          echo "🔧 PROJECTS CLEANED:"
+          echo "   - SERVER Project: deployments, services, ingresses, TLS certificates"
+          echo "   - ADMIN Project: deployments, services, ingresses, TLS certificates"
+          echo ""
+          echo "🌐 DNS RECORDS CLEANED:"
+          echo "   - {branch-name}.server.irai.yoga (SERVER project)"
+          echo "   - {branch-name}.portal.irai.yoga (ADMIN project)"
+          echo ""
+          echo "⚠️  REMINDER: This is TEST MODE with very short timings!"
+          echo "📝 Change back to production timings after testing:"
+          echo "   - Schedule: '0 */3 * * *' (every 3 hours)"
+          echo "   - Age check: 3 hours instead of 2 minutes"
