@@ -22,6 +22,16 @@ inputs:
   live-url:
     description: "Dynamic live URL (required for live environment)"
     required: false
+  # ✅ ADDED: Webhook URL inputs
+  zoho-webhook-preview:
+    description: "Zoho webhook URL for preview environment"
+    required: true
+  zoho-webhook-stage:
+    description: "Zoho webhook URL for stage environment"
+    required: true
+  zoho-webhook-live:
+    description: "Zoho webhook URL for live environment"
+    required: true
 
 runs:
   using: "composite"
@@ -29,9 +39,10 @@ runs:
     - name: Send card notification to Zoho Cliq
       shell: bash
       env:
-        ZOHO_WEBHOOK_PREVIEW: ${{ secrets.ZOHO_WEBHOOK_PREVIEW }}
-        ZOHO_WEBHOOK_STAGE: ${{ secrets.ZOHO_WEBHOOK_STAGE }}
-        ZOHO_WEBHOOK_LIVE: ${{ secrets.ZOHO_WEBHOOK_LIVE }}
+        # ✅ FIXED: Use inputs instead of secrets context
+        ZOHO_WEBHOOK_PREVIEW: ${{ inputs.zoho-webhook-preview }}
+        ZOHO_WEBHOOK_STAGE: ${{ inputs.zoho-webhook-stage }}
+        ZOHO_WEBHOOK_LIVE: ${{ inputs.zoho-webhook-live }}
       run: |
         chmod +x $GITHUB_ACTION_PATH/notify.sh
         $GITHUB_ACTION_PATH/notify.sh \
