@@ -7,11 +7,17 @@ on:
   delete:
     branches:
       - '**'
-
+  # Add workflow_dispatch for manual triggering during testing
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      
 jobs:
   cleanup-old-deployments:
     if: |
       github.event_name == 'schedule' || 
+      github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'delete' && github.event.ref_type == 'branch' && 
        contains(github.event.ref, 'feat/') || contains(github.event.ref, 'fix/') || 
        contains(github.event.ref, 'chore/') || contains(github.event.ref, 'test/') ||
@@ -20,6 +26,12 @@ jobs:
        contains(github.event.ref, 'perf/') || contains(github.event.ref, 'build/'))
     runs-on: ubuntu-latest
     steps:
+      - name: Check workflow trigger
+        run: |
+          echo "🔍 Workflow triggered by: ${{ github.event_name }}"
+          echo "📅 Current time: $(date)"
+          echo "🕒 GitHub event: ${{ github.event }}"
+
       - name: Checkout manifests repo
         uses: cloudops-one/checkout@v4
         with:
@@ -46,17 +58,17 @@ jobs:
           fi
 
       - name: Set up kubectl
-        if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
         uses: cloudops-one/action-doctl@v2
         with:
           token: ${{ secrets.DO_API_TOKEN }}
 
       - name: Save kubeconfig
-        if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
         run: doctl kubernetes cluster kubeconfig save k8s
 
       - name: Install and configure AWS CLI
-        if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
         run: |
           # Install AWS CLI v2
           curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
@@ -84,7 +96,7 @@ jobs:
           aws sts get-caller-identity
 
       - name: Get Load Balancer IP
-        if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
         id: get-lb-ip
         run: |
           # Get the Load Balancer IP from nginx ingress
@@ -102,7 +114,7 @@ jobs:
           fi
 
       - name: Create cleanup script
-        if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
         id: create-cleanup-script
         run: |
           cat > cleanup-branch-resources.sh << 'EOF'
@@ -214,7 +226,7 @@ jobs:
           echo "✅ Cleanup script created and made executable"
 
       - name: Cleanup old preview deployments (TEST MODE)
-        if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
         run: |
           NAMESPACE="irai-yoga-v1-preview"
           HOSTED_ZONE_ID="${{ secrets.ROUTE53_HOSTED_ZONE_ID }}"
@@ -232,7 +244,7 @@ jobs:
           fi
           
           # For scheduled runs, find ALL preview deployments older than 2 minutes
-          if [ "${{ github.event_name }}" == "schedule" ]; then
+          if [ "${{ github.event_name }}" == "schedule" ] || [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             echo "🕒 TEST MODE: Checking ALL preview deployments older than 2 minutes in $NAMESPACE..."
             
             # Get all deployments in preview namespace only
@@ -294,7 +306,7 @@ jobs:
           echo "✅ Only preview branches (feat/*, fix/*, chore/*, etc.) are cleaned up"
 
       - name: Verify cleanup (TEST MODE)
-        if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
         run: |
           echo "✅ TEST MODE: PREVIEW cleanup completed successfully"
           echo "⏰ TEST SCHEDULE: Runs every 2 minutes"
@@ -309,8 +321,3 @@ jobs:
           echo "🌐 DNS RECORDS CLEANED:"
           echo "   - {branch-name}.server.irai.yoga (SERVER project)"
           echo "   - {branch-name}.portal.irai.yoga (ADMIN project)"
-          echo ""
-          echo "⚠️  REMINDER: This is TEST MODE with very short timings!"
-          echo "📝 Change back to production timings after testing:"
-          echo "   - Schedule: '0 */3 * * *' (every 3 hours)"
-          echo "   - Age check: 3 hours instead of 2 minutes"
