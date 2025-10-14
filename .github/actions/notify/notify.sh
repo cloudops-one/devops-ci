@@ -1,20 +1,20 @@
 #!/bin/bash
-set -e
+set +e  # Continue even if a command fails
 
 # --- INPUTS -----------------------------------------------------------------
 WEBHOOK_PREVIEW="${ZOHO_WEBHOOK_PREVIEW}"
 WEBHOOK_STAGE="${ZOHO_WEBHOOK_STAGE}"
 WEBHOOK_LIVE="${ZOHO_WEBHOOK_LIVE}"
 
-MESSAGE="$1"         # e.g. "Deployment"
-ENVIRONMENT="$2"      # preview/stage/live
-STATUS="$3"           # success/failure
-SERVICE="$4"          # admin/server/website
-PREVIEW_URL="$5"      # Dynamic preview URL
-STAGE_URL="$6"        # Dynamic stage URL  
-LIVE_URL="$7"         # Dynamic live URL
+MESSAGE="$1"        # e.g. "Deployment"
+ENVIRONMENT="$2"    # preview/stage/live
+STATUS="$3"         # success/failure
+SERVICE="$4"        # admin/server/website
+PREVIEW_URL="$5"
+STAGE_URL="$6"
+LIVE_URL="$7"
 
-# --- STATUS ---------------------------------------------------------------
+# --- STATUS ICONS ------------------------------------------------------------
 if [[ "$STATUS" == "success" ]]; then
   STATUS_ICON="✅"
   STATUS_TEXT="SUCCESS"
@@ -25,37 +25,22 @@ else
   THEME="danger"
 fi
 
-# --- ENVIRONMENT SELECTION --------------------------------------------------
+# --- ENVIRONMENT SELECTION ---------------------------------------------------
 case "$ENVIRONMENT" in
   preview)
     WEBHOOK_URL="$WEBHOOK_PREVIEW"
     ENV_DISPLAY="Preview"
-    # Use dynamic preview URL if provided, otherwise fallback to default
-    if [[ -n "$PREVIEW_URL" && "$PREVIEW_URL" != "null" ]]; then
-      SERVICE_URL="$PREVIEW_URL"
-    else
-      SERVICE_URL="https://admin.preview.v1.irai.yoga"
-    fi
+    SERVICE_URL="${PREVIEW_URL:-https://${SERVICE}.preview.v1.irai.yoga}"
     ;;
   stage)
     WEBHOOK_URL="$WEBHOOK_STAGE"
     ENV_DISPLAY="Stage"
-    # Use dynamic stage URL if provided, otherwise fallback to default
-    if [[ -n "$STAGE_URL" && "$STAGE_URL" != "null" ]]; then
-      SERVICE_URL="$STAGE_URL"
-    else
-      SERVICE_URL="https://admin.stage.v1.irai.yoga"
-    fi
+    SERVICE_URL="${STAGE_URL:-https://${SERVICE}.stage.v1.irai.yoga}"
     ;;
   live)
     WEBHOOK_URL="$WEBHOOK_LIVE"
     ENV_DISPLAY="Live"
-    # Use dynamic live URL if provided, otherwise fallback to default
-    if [[ -n "$LIVE_URL" && "$LIVE_URL" != "null" ]]; then
-      SERVICE_URL="$LIVE_URL"
-    else
-      SERVICE_URL="https://admin.live.v1.irai.yoga"
-    fi
+    SERVICE_URL="${LIVE_URL:-https://${SERVICE}.live.v1.irai.yoga}"
     ;;
   *)
     echo "❌ Unknown environment: $ENVIRONMENT"
@@ -63,61 +48,39 @@ case "$ENVIRONMENT" in
     ;;
 esac
 
-# --- COMPONENT MAPPING ------------------------------------------------------
+# --- COMPONENT LABEL ---------------------------------------------------------
 case "$SERVICE" in
-  admin)
-    COMPONENT="Admin Portal"
-    ;;
-  server)
-    COMPONENT="Backend Server"
-    ;;
-  website)
-    COMPONENT="Website"
-    ;;
-  *)
-    COMPONENT="$SERVICE"
-    ;;
+  admin) COMPONENT="Admin Portal" ;;
+  server) COMPONENT="Backend Server" ;;
+  website) COMPONENT="Website" ;;
+  *) COMPONENT="$SERVICE" ;;
 esac
 
-# --- GIT INFO (WITH FALLBACKS) ----------------------------------------------
-# Try to get git info, but don't fail if not available
-AUTHOR="unknown"
-COMMIT_MESSAGE="no message"
-COMMIT_BRANCH="${GITHUB_REF_NAME:-unknown}"
-COMMIT_SHA="${GITHUB_SHA:0:7}"  # Use GITHUB_SHA from environment
-
-# Try to get git info if .git exists
-if [ -d ".git" ]; then
-  AUTHOR=$(git log -1 --pretty=format:'%an' 2>/dev/null || echo "unknown")
-  COMMIT_MESSAGE=$(git log -1 --pretty=format:'%s' 2>/dev/null || echo "no message")
-  COMMIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "${GITHUB_SHA:0:7}")
-fi
-
-# Format commit message for display (short SHA + message)
-SHORT_COMMIT_DISPLAY="(${COMMIT_SHA}) ${COMMIT_MESSAGE}"
+# --- GIT INFO ---------------------------------------------------------------
+AUTHOR=$(git log -1 --pretty=format:'%an' 2>/dev/null || echo "${GITHUB_ACTOR:-unknown}")
+COMMIT_MESSAGE=$(git log -1 --pretty=format:'%s' 2>/dev/null || echo "no message")
+COMMIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "${GITHUB_SHA:0:7}")
+SHORT_COMMIT="(${COMMIT_SHA}) ${COMMIT_MESSAGE}"
 
 # --- TIMESTAMP --------------------------------------------------------------
 CURRENT_TIME=$(date '+%I:%M %p')
 CURRENT_DATE=$(date '+%d %b, %Y')
 TIMESTAMP="${CURRENT_DATE}. ${CURRENT_TIME}"
 
-# --- GITHUB ACTIONS RUN LINK ------------------------------------------------
-RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-
-# --- CARD PAYLOAD (NEW STRUCTURE) -------------------------------------------
+# --- CARD PAYLOAD -----------------------------------------------------------
 PAYLOAD=$(jq -n \
+  --arg theme "$THEME" \
+  --arg title "$STATUS_ICON Deployment $STATUS_TEXT" \
   --arg env "$ENV_DISPLAY" \
   --arg component "$COMPONENT" \
-  --arg status "$STATUS_ICON $STATUS_TEXT" \
+  --arg status "$STATUS_TEXT" \
   --arg author "@$AUTHOR" \
   --arg timestamp "$TIMESTAMP" \
   --arg url "$SERVICE_URL" \
-  --arg message "$SHORT_COMMIT_DISPLAY" \
-  --arg run_url "$RUN_URL" \
-  --arg theme "$THEME" \
+  --arg message "$SHORT_COMMIT" \
   '{
     card: {
-      title: "Deployment Notification",
+      title: $title,
       theme: $theme,
       thumbnail: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
       sections: [
@@ -132,38 +95,25 @@ PAYLOAD=$(jq -n \
             { label: "Message", value: $message, type: "text" }
           ]
         }
-      ],
-      buttons: [
-        {
-          label: "View Deployment Details",
-          type: "link",
-          value: $run_url
-        }
       ]
     }
   }'
 )
 
-# --- SEND TO ZOHO CLIQ ------------------------------------------------------
-echo "📤 Sending Zoho Cliq notification for $ENV_DISPLAY environment..."
-echo "🔗 Service URL: $SERVICE_URL"
-echo "👤 Author: $AUTHOR"
-echo "💬 Message: $SHORT_COMMIT_DISPLAY"
-
+# --- SEND CARD --------------------------------------------------------------
+echo "📤 Sending Zoho Cliq notification for $ENV_DISPLAY..."
 RESPONSE=$(curl -s -X POST "$WEBHOOK_URL" \
   -H "Content-Type: application/json" \
   -d "$PAYLOAD" \
   -w "\nHTTP_STATUS:%{http_code}")
 
-HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
+HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2 | tr -d '[:space:]')
 
 if [[ "$HTTP_STATUS" == "200" ]]; then
   echo "✅ Notification sent successfully to Zoho Cliq"
-  echo "📊 Environment: $ENV_DISPLAY"
-  echo "🔄 Status: $STATUS_TEXT"
-  echo "🌐 URL: $SERVICE_URL"
 else
   echo "❌ Failed to send notification (HTTP $HTTP_STATUS)"
   echo "Response: $RESPONSE"
-  exit 1
 fi
+
+exit 0
