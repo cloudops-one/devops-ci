@@ -79,11 +79,19 @@ case "$SERVICE" in
     ;;
 esac
 
-# --- GIT INFO ---------------------------------------------------------------
-AUTHOR=$(git log -1 --pretty=format:'%an' 2>/dev/null || echo "unknown")
-COMMIT_MESSAGE=$(git log -1 --pretty=format:'%s' 2>/dev/null || echo "no message")
-COMMIT_BRANCH=$(echo "${GITHUB_REF_NAME:-unknown}")
-COMMIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+# --- GIT INFO (WITH FALLBACKS) ----------------------------------------------
+# Try to get git info, but don't fail if not available
+AUTHOR="unknown"
+COMMIT_MESSAGE="no message"
+COMMIT_BRANCH="${GITHUB_REF_NAME:-unknown}"
+COMMIT_SHA="${GITHUB_SHA:0:7}"  # Use GITHUB_SHA from environment
+
+# Try to get git info if .git exists
+if [ -d ".git" ]; then
+  AUTHOR=$(git log -1 --pretty=format:'%an' 2>/dev/null || echo "unknown")
+  COMMIT_MESSAGE=$(git log -1 --pretty=format:'%s' 2>/dev/null || echo "no message")
+  COMMIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "${GITHUB_SHA:0:7}")
+fi
 
 # Format commit message for display (short SHA + message)
 SHORT_COMMIT_DISPLAY="(${COMMIT_SHA}) ${COMMIT_MESSAGE}"
