@@ -2,7 +2,7 @@ name: Cleanup Preview Deployments (TEST MODE)
 on:
   # TEST MODE: Run every 2 minutes to check for preview deployments older than 2 minutes
   schedule:
-    - cron: '0 */3 * * *'  # Run every 3 hours for testing
+    - cron: '*/2 * * * *'  # Run every 2 minutes for testing
   # Also run on branch delete for preview branches
   delete:
     branches:
@@ -55,13 +55,33 @@ jobs:
         if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
         run: doctl kubernetes cluster kubeconfig save k8s
 
-      - name: Install AWS CLI
+      - name: Install and configure AWS CLI
         if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
         run: |
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip awscliv2.zip
-          sudo ./aws/install
+          # Install AWS CLI v2
+          curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip -q awscliv2.zip
+          sudo ./aws/install --update
           aws --version
+          
+          # Configure AWS credentials
+          mkdir -p ~/.aws
+          cat > ~/.aws/credentials << EOF
+          [default]
+          aws_access_key_id = ${{ secrets.ROUTE53_ACCESS_KEY_ID }}
+          aws_secret_access_key = ${{ secrets.ROUTE53_SECRET_ACCESS_KEY }}
+          region = ${{ secrets.ROUTE53_REGION }}
+          EOF
+          
+          # Also set region in config
+          cat > ~/.aws/config << EOF
+          [default]
+          region = ${{ secrets.ROUTE53_REGION }}
+          EOF
+          
+          echo "✅ AWS CLI configured successfully"
+          echo "🔐 Testing AWS credentials..."
+          aws sts get-caller-identity
 
       - name: Get Load Balancer IP
         if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
@@ -78,7 +98,7 @@ jobs:
             echo "lb_ip=$LB_IP" >> $GITHUB_OUTPUT
           else
             echo "❌ Could not find Load Balancer IP"
-            echo "lb_ip=YOUR_LOAD_BALANCER_IP" >> $GITHUB_OUTPUT
+            echo "lb_ip=unknown" >> $GITHUB_OUTPUT
           fi
 
       - name: Create cleanup script
@@ -87,11 +107,16 @@ jobs:
         run: |
           cat > cleanup-branch-resources.sh << 'EOF'
           #!/bin/bash
+          set -e  # Exit on any error
+          
           BRANCH_NAME="$1"
           NAMESPACE="$2"
           HOSTED_ZONE_ID="$3"
+          LB_IP="$4"
           
           echo "🧹 TEST MODE: Cleaning up PREVIEW resources for branch: $BRANCH_NAME in namespace: $NAMESPACE"
+          echo "🌐 Using Load Balancer IP: $LB_IP"
+          echo "🏷️ Using Hosted Zone ID: $HOSTED_ZONE_ID"
           
           # Delete Kubernetes resources ONLY in the specified namespace
           echo "🗑️ Deleting Kubernetes resources in $NAMESPACE..."
@@ -119,9 +144,6 @@ jobs:
           SERVER_DOMAIN="$BRANCH_NAME.server.irai.yoga"
           # Admin project domain record  
           ADMIN_DOMAIN="$BRANCH_NAME.portal.irai.yoga"
-          
-          # Get Load Balancer IP from environment variable
-          LB_IP="$LB_IP"
           
           # Delete server project domain record
           cat > delete-server-record.json << EOR
@@ -166,6 +188,7 @@ jobs:
           EOR
           
           # Execute Route53 changes
+          echo "🔍 Checking if SERVER project DNS record exists: $SERVER_DOMAIN"
           if aws route53 list-resource-record-sets --hosted-zone-id $HOSTED_ZONE_ID --query "ResourceRecordSets[?Name=='$SERVER_DOMAIN.']" --output text | grep -q "$SERVER_DOMAIN"; then
             echo "🗑️ TEST MODE: Deleting SERVER project DNS record: $SERVER_DOMAIN"
             aws route53 change-resource-record-sets --hosted-zone-id $HOSTED_ZONE_ID --change-batch file://delete-server-record.json
@@ -173,6 +196,7 @@ jobs:
             echo "ℹ️ TEST MODE: SERVER project DNS record $SERVER_DOMAIN not found, skipping"
           fi
           
+          echo "🔍 Checking if ADMIN project DNS record exists: $ADMIN_DOMAIN"
           if aws route53 list-resource-record-sets --hosted-zone-id $HOSTED_ZONE_ID --query "ResourceRecordSets[?Name=='$ADMIN_DOMAIN.']" --output text | grep -q "$ADMIN_DOMAIN"; then
             echo "🗑️ TEST MODE: Deleting ADMIN project DNS record: $ADMIN_DOMAIN"
             aws route53 change-resource-record-sets --hosted-zone-id $HOSTED_ZONE_ID --change-batch file://delete-admin-record.json
@@ -189,25 +213,17 @@ jobs:
           chmod +x cleanup-branch-resources.sh
           echo "✅ Cleanup script created and made executable"
 
-      - name: Update cleanup script with LB IP
-        if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
-        run: |
-          LB_IP="${{ steps.get-lb-ip.outputs.lb_ip }}"
-          sed -i "s/LB_IP=\"\$LB_IP\"/LB_IP=\"$LB_IP\"/g" cleanup-branch-resources.sh
-          echo "✅ Updated cleanup script with Load Balancer IP: $LB_IP"
-
       - name: Cleanup old preview deployments (TEST MODE)
         if: github.event_name == 'schedule' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.ROUTE53_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.ROUTE53_SECRET_ACCESS_KEY }}
-          AWS_REGION: ${{ secrets.ROUTE53_REGION }}
         run: |
           NAMESPACE="irai-yoga-v1-preview"
           HOSTED_ZONE_ID="${{ secrets.ROUTE53_HOSTED_ZONE_ID }}"
+          LB_IP="${{ steps.get-lb-ip.outputs.lb_ip }}"
           
           echo "🧹 TEST MODE: Starting cleanup of preview deployments in namespace: $NAMESPACE..."
           echo "⏰ TEST SCHEDULE: Every 2 minutes (deployments older than 2 minutes will be cleaned)"
+          echo "🌐 Using Load Balancer IP: $LB_IP"
+          echo "🔐 Using Hosted Zone ID: $HOSTED_ZONE_ID"
           
           # Check if namespace exists
           if ! kubectl get namespace $NAMESPACE &> /dev/null; then
@@ -250,7 +266,7 @@ jobs:
                   # TEST MODE: Delete if older than 2 minutes
                   if [ $AGE_MINUTES -ge 2 ]; then
                     echo "🗑️ TEST MODE: Deleting preview deployment $DEPLOYMENT (older than 2 minutes)"
-                    if ./cleanup-branch-resources.sh "$BRANCH_NAME" "$NAMESPACE" "$HOSTED_ZONE_ID"; then
+                    if ./cleanup-branch-resources.sh "$BRANCH_NAME" "$NAMESPACE" "$HOSTED_ZONE_ID" "$LB_IP"; then
                       echo "✅ TEST MODE: Successfully cleaned up $DEPLOYMENT"
                     else
                       echo "⚠️ TEST MODE: Failed to clean up $DEPLOYMENT, continuing with others"
@@ -268,7 +284,7 @@ jobs:
           elif [ "${{ github.event_name }}" == "delete" ]; then
             BRANCH_NAME="${{ steps.extract-branch.outputs.branch_name }}"
             echo "🗑️ TEST MODE: Cleaning up resources for deleted PREVIEW branch: $BRANCH_NAME in namespace: $NAMESPACE"
-            ./cleanup-branch-resources.sh "$BRANCH_NAME" "$NAMESPACE" "$HOSTED_ZONE_ID"
+            ./cleanup-branch-resources.sh "$BRANCH_NAME" "$NAMESPACE" "$HOSTED_ZONE_ID" "$LB_IP"
           fi
 
       - name: Skip non-preview branch
