@@ -5,6 +5,7 @@ on:
   delete:
     branches:
       - '**'
+ 
   workflow_dispatch:
 
 jobs:
