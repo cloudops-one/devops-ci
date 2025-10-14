@@ -1,7 +1,7 @@
 name: Cleanup Preview Deployments (TEST MODE)
 on:
   schedule:
-    - cron: '*/2 * * * *'  # Run every 2 minutes for testing
+    - cron: '0 */3 * * *'  # Run every 2 minutes for testing
   delete:
     branches:
       - '**'
