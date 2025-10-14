@@ -1,18 +1,14 @@
 name: Cleanup Preview Deployments (TEST MODE)
 on:
-  # TEST MODE: Run every 2 minutes to check for preview deployments older than 2 minutes
   schedule:
     - cron: '*/2 * * * *'  # Run every 2 minutes for testing
-  # Also run on branch delete for preview branches
   delete:
     branches:
       - '**'
-  # Add workflow_dispatch for manual triggering during testing
   workflow_dispatch:
   push:
     branches:
       - main
-      
 jobs:
   cleanup-old-deployments:
     if: |
@@ -30,7 +26,6 @@ jobs:
         run: |
           echo "🔍 Workflow triggered by: ${{ github.event_name }}"
           echo "📅 Current time: $(date)"
-          echo "🕒 GitHub event: ${{ github.event }}"
 
       - name: Checkout manifests repo
         uses: cloudops-one/checkout@v4
@@ -67,6 +62,13 @@ jobs:
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
         run: doctl kubernetes cluster kubeconfig save k8s
 
+      - name: Test kubectl access
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
+        run: |
+          echo "🔧 Testing kubectl access..."
+          kubectl cluster-info
+          echo "✅ kubectl is working"
+
       - name: Install and configure AWS CLI
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
         run: |
@@ -100,6 +102,9 @@ jobs:
         id: get-lb-ip
         run: |
           # Get the Load Balancer IP from nginx ingress
+          echo "🔍 Looking for Load Balancer IP..."
+          kubectl get services -A
+          
           LB_IP=$(kubectl get service -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
           if [ -z "$LB_IP" ]; then
             LB_IP=$(kubectl get service -n ingress-nginx ingress-nginx-controller -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
@@ -133,21 +138,36 @@ jobs:
           # Delete Kubernetes resources ONLY in the specified namespace
           echo "🗑️ Deleting Kubernetes resources in $NAMESPACE..."
           
-          # Server Project Resources
-          echo "🔧 Cleaning up SERVER project resources..."
-          kubectl delete deployment $BRANCH_NAME-server-deployment -n $NAMESPACE --ignore-not-found=true
-          kubectl delete service $BRANCH_NAME-server-service -n $NAMESPACE --ignore-not-found=true
-          kubectl delete ingress $BRANCH_NAME-server-ingress -n $NAMESPACE --ignore-not-found=true
-          kubectl delete certificate $BRANCH_NAME-server-tls -n $NAMESPACE --ignore-not-found=true
-          kubectl delete secret $BRANCH_NAME-server-tls -n $NAMESPACE --ignore-not-found=true
+          # List all resources before deletion for debugging
+          echo "📋 Current resources in namespace $NAMESPACE:"
+          kubectl get all -n $NAMESPACE | grep "$BRANCH_NAME" || echo "No resources found for branch $BRANCH_NAME"
           
-          # Admin Project Resources  
+          # Server Project Resources - FIXED: Use correct resource names
+          echo "🔧 Cleaning up SERVER project resources..."
+          kubectl delete deployment $BRANCH_NAME-server-deployment -n $NAMESPACE --ignore-not-found=true --wait=false
+          kubectl delete service $BRANCH_NAME-server-service -n $NAMESPACE --ignore-not-found=true --wait=false
+          kubectl delete service $BRANCH_NAME-server-svc -n $NAMESPACE --ignore-not-found=true --wait=false
+          kubectl delete ingress $BRANCH_NAME-server-ingress -n $NAMESPACE --ignore-not-found=true --wait=false
+          kubectl delete certificate $BRANCH_NAME-server-tls -n $NAMESPACE --ignore-not-found=true --wait=false
+          kubectl delete secret $BRANCH_NAME-server-tls -n $NAMESPACE --ignore-not-found=true --wait=false
+          
+          # Admin Project Resources - FIXED: Use correct resource names
           echo "🔧 Cleaning up ADMIN project resources..."
-          kubectl delete deployment $BRANCH_NAME-admin-deployment -n $NAMESPACE --ignore-not-found=true
-          kubectl delete service $BRANCH_NAME-admin-service -n $NAMESPACE --ignore-not-found=true
-          kubectl delete ingress $BRANCH_NAME-admin-ingress -n $NAMESPACE --ignore-not-found=true
-          kubectl delete certificate $BRANCH_NAME-admin-tls -n $NAMESPACE --ignore-not-found=true
-          kubectl delete secret $BRANCH_NAME-admin-tls -n $NAMESPACE --ignore-not-found=true
+          kubectl delete deployment $BRANCH_NAME-admin-deployment -n $NAMESPACE --ignore-not-found=true --wait=false
+          kubectl delete service $BRANCH_NAME-admin-service -n $NAMESPACE --ignore-not-found=true --wait=false
+          kubectl delete service $BRANCH_NAME-admin-svc -n $NAMESPACE --ignore-not-found=true --wait=false
+          kubectl delete ingress $BRANCH_NAME-admin-ingress -n $NAMESPACE --ignore-not-found=true --wait=false
+          kubectl delete certificate $BRANCH_NAME-admin-tls -n $NAMESPACE --ignore-not-found=true --wait=false
+          kubectl delete secret $BRANCH_NAME-admin-tls -n $NAMESPACE --ignore-not-found=true --wait=false
+          
+          # Wait for deletions to complete
+          echo "⏳ Waiting for resources to be deleted..."
+          sleep 10
+          
+          # Verify deletions
+          echo "🔍 Verifying deletions..."
+          kubectl get deployments -n $NAMESPACE | grep "$BRANCH_NAME" && echo "❌ Deployments still exist" || echo "✅ Deployments deleted"
+          kubectl get services -n $NAMESPACE | grep "$BRANCH_NAME" && echo "❌ Services still exist" || echo "✅ Services deleted"
           
           # Clean up DNS records in Route53
           echo "🌐 TEST MODE: Cleaning up PREVIEW DNS records in Route53..."
@@ -305,19 +325,9 @@ jobs:
           echo "⏩ Skipping cleanup for non-preview branch: ${{ github.event.ref }}"
           echo "✅ Only preview branches (feat/*, fix/*, chore/*, etc.) are cleaned up"
 
-      - name: Verify cleanup (TEST MODE)
+      - name: Verify final state
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'delete' && steps.extract-branch.outputs.is_preview_branch == 'true')
         run: |
-          echo "✅ TEST MODE: PREVIEW cleanup completed successfully"
-          echo "⏰ TEST SCHEDULE: Runs every 2 minutes"
-          echo "🗑️ TEST DELETES: Preview deployments older than 2 minutes"
-          echo "🛡️ PROTECTS: Wildcard certificates and non-preview branches"
-          echo "🌐 CLEANS DNS: {branch-name}.server.irai.yoga & {branch-name}.portal.irai.yoga"
-          echo ""
-          echo "🔧 PROJECTS CLEANED:"
-          echo "   - SERVER Project: deployments, services, ingresses, TLS certificates"
-          echo "   - ADMIN Project: deployments, services, ingresses, TLS certificates"
-          echo ""
-          echo "🌐 DNS RECORDS CLEANED:"
-          echo "   - {branch-name}.server.irai.yoga (SERVER project)"
-          echo "   - {branch-name}.portal.irai.yoga (ADMIN project)"
+          echo "🔍 Final state of namespace irai-yoga-v1-preview:"
+          kubectl get all -n irai-yoga-v1-preview
+          echo "✅ TEST MODE: PREVIEW cleanup completed"
